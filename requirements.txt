@@ -1,0 +1,8 @@
+# FixFirst AI - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+fastapi
+uvicorn[standard]
+httpx
+python-multipart
+pydantic
