@@ -67,9 +67,9 @@ app = FastAPI(
 
 # CORS — allow Vite dev server and configurable deployed frontend origins
 allowed_origins = [
-f"[http://127.0.0.1:{FRONTEND_PORT](http://127.0.0.1:{FRONTEND_PORT)}",
-f"http://localhost:{FRONTEND_PORT}",
-"https://fix-first-ai-cloud-9so6w00j9-syzygy7.vercel.app",
+    f"http://127.0.0.1:{FRONTEND_PORT}",
+    f"http://localhost:{FRONTEND_PORT}",
+    "https://fix-first-ai-cloud-9so6w00j9-syzygy7.vercel.app",
 ]
 
 
