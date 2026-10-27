@@ -5,9 +5,10 @@
  * Dynamically picks up environment configuration for development vs production.
  */
 
-const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE_URL) 
-  ? import.meta.env.VITE_API_BASE_URL 
-  : 'http://127.0.0.1:8001';
+const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE_URL)
+? import.meta.env.VITE_API_BASE_URL
+: 'https://fixfirstai-cloud.onrender.com';
+
 
 // ---------------------------------------------------------------------------
 // Generic fetch wrapper
