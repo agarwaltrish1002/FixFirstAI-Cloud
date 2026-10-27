@@ -72,6 +72,7 @@ f"http://localhost:{FRONTEND_PORT}",
 "https://fix-first-ai-cloud-9so6w00j9-syzygy7.vercel.app",
 ]
 
+
 extra_origins = os.getenv("ALLOWED_ORIGINS", "")
 if extra_origins:
     allowed_origins.extend([origin.strip() for origin in extra_origins.split(",") if origin.strip()])
