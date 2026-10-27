@@ -1,28 +1,33 @@
+````python
 """
-FixFirstAI - AI Service (Ollama Integration)
-==============================================
-Communicates with a local Ollama instance to get an LLM-powered analysis of
-maintenance / safety complaints.  Falls back gracefully when Ollama is
-unreachable or the model isn't loaded.
+FixFirstAI - AI Service
+Supports Google Gemini cloud AI with Ollama compatibility
+and rule-based fallback.
 """
 
 import json
 import logging
+import os
 from typing import Any
 
 import httpx
+from google import genai
 
 from backend.config import OLLAMA_URL, OLLAMA_MODEL
 
 logger = logging.getLogger("fixfirst.ai")
 
-# Timeout for Ollama API calls (seconds)
 _AI_TIMEOUT = 60.0
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 
-# ---------------------------------------------------------------------------
-# Health checks
-# ---------------------------------------------------------------------------
+def _get_gemini_client():
+    """Create a Gemini client if an API key is configured."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return None
+    return genai.Client(api_key=api_key)
+
 
 async def check_ollama_available() -> bool:
     """Return True if the Ollama server is reachable."""
@@ -35,16 +40,14 @@ async def check_ollama_available() -> bool:
 
 
 async def check_model_available(model_name: str | None = None) -> bool:
-    """Return True if the specified model (default: configured model) is loaded in Ollama."""
+    """Check whether the configured Ollama model is available."""
     model_name = model_name or OLLAMA_MODEL
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(f"{OLLAMA_URL}/api/tags")
             if resp.status_code != 200:
                 return False
-            data = resp.json()
-            models = [m.get("name", "") for m in data.get("models", [])]
-            # Ollama sometimes includes the ":latest" tag
+            models = [m.get("name", "") for m in resp.json().get("models", [])]
             return any(
                 model_name in m or m.startswith(model_name.split(":")[0])
                 for m in models
@@ -53,9 +56,10 @@ async def check_model_available(model_name: str | None = None) -> bool:
         return False
 
 
-# ---------------------------------------------------------------------------
-# AI analysis
-# ---------------------------------------------------------------------------
+async def check_gemini_available() -> bool:
+    """Check whether Gemini is configured. This does not make a paid API call."""
+    return bool(os.getenv("GEMINI_API_KEY"))
+
 
 async def analyze_with_ai(
     title: str,
@@ -63,107 +67,111 @@ async def analyze_with_ai(
     category: str,
 ) -> dict[str, Any] | None:
     """
-    Ask the Ollama LLM to analyse a complaint and return structured JSON.
-
-    Returns a dict on success, or None if Ollama is unavailable / the
-    response cannot be parsed.
+    Analyze a maintenance/safety complaint with Gemini.
+    Return None if Gemini is not configured or the request fails,
+    allowing the existing rule-based fallback to run.
     """
-    prompt = (
-        "You are a campus safety and maintenance AI analyst. "
-        "Analyze the following complaint and respond with ONLY valid JSON "
-        "(no markdown, no code fences, no explanation outside the JSON).\n\n"
-        f"Title: {title}\n"
-        f"Description: {description}\n"
-        f"Category: {category}\n\n"
-        "Respond with this exact JSON structure:\n"
-        "{\n"
-        '  "category": "<best-fit category>",\n'
-        '  "summary": "<one-line summary>",\n'
-        '  "risk_indicators": ["<risk 1>", "<risk 2>"],\n'
-        '  "suggested_priority": "<Critical|High|Medium|Low>",\n'
-        '  "explanation": "<why this priority>",\n'
-        '  "recommended_department": "<department name>",\n'
-        '  "suggested_action": "<what to do next>"\n'
-        "}\n"
-    )
+    client = _get_gemini_client()
+    if client is None:
+        logger.info("GEMINI_API_KEY is not configured; AI analysis unavailable.")
+        return None
+
+    prompt = f"""
+You are a campus safety and maintenance AI analyst.
+Analyze the complaint below and return ONLY a valid JSON object.
+Do not include markdown fences or text outside the JSON.
+
+Title: {title}
+Description: {description}
+Category: {category}
+
+Use exactly these fields:
+{{
+  "category": "best-fit category",
+  "summary": "one-line summary",
+  "risk_indicators": ["risk 1", "risk 2"],
+  "suggested_priority": "Critical|High|Medium|Low",
+  "explanation": "why this priority was chosen",
+  "recommended_department": "department name",
+  "suggested_action": "recommended next step"
+}}
+
+Be careful with safety risks. Do not claim that an issue has been physically inspected.
+"""
 
     try:
-        async with httpx.AsyncClient(timeout=_AI_TIMEOUT) as client:
-            resp = await client.post(
-                f"{OLLAMA_URL}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {"temperature": 0.3},
-                },
-            )
+        # The SDK call is synchronous, so run it in a worker thread to avoid
+        # blocking FastAPI's async event loop.
+        import asyncio
 
-            if resp.status_code != 200:
-                logger.warning("Ollama returned status %s", resp.status_code)
-                return None
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config={
+                "temperature": 0.3,
+                "response_mime_type": "application/json",
+            },
+        )
 
-            raw = resp.json().get("response", "")
-            return _parse_ai_response(raw)
+        raw = response.text or ""
+        result = _parse_ai_response(raw)
+        if result is None:
+            logger.warning("Gemini returned an unparseable response.")
+        return result
 
-    except httpx.TimeoutException:
-        logger.warning("Ollama request timed out after %.0f s", _AI_TIMEOUT)
-        return None
     except Exception as exc:
-        logger.error("Ollama request failed: %s", exc)
+        # Do not log the API key or request headers.
+        logger.error("Gemini analysis request failed: %s", exc)
         return None
 
 
 def _parse_ai_response(raw: str) -> dict[str, Any] | None:
-    """
-    Try to extract valid JSON from the raw LLM response.
-    LLMs sometimes wrap JSON in ```json ... ``` fences.
-    """
+    """Parse and validate the AI's JSON response."""
     text = raw.strip()
 
-    # Strip markdown code fences if present
     if text.startswith("```"):
         lines = text.splitlines()
-        # Remove first and last fence lines
-        lines = [l for l in lines if not l.strip().startswith("```")]
+        lines = [line for line in lines if not line.strip().startswith("```")]
         text = "\n".join(lines).strip()
 
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        # Last-resort: try to find the first { ... } block
         start = text.find("{")
         end = text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            try:
-                data = json.loads(text[start : end + 1])
-            except json.JSONDecodeError:
-                logger.warning("Could not parse AI response as JSON")
-                return None
-        else:
-            logger.warning("No JSON object found in AI response")
+        if start == -1 or end <= start:
+            logger.warning("No JSON object found in AI response.")
+            return None
+        try:
+            data = json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            logger.warning("Could not parse AI response as JSON.")
             return None
 
-    # Validate expected keys (be lenient — fill in defaults)
+    if not isinstance(data, dict):
+        return None
+
     valid_priorities = {"Critical", "High", "Medium", "Low"}
     suggested = data.get("suggested_priority", "Medium")
     if suggested not in valid_priorities:
-        data["suggested_priority"] = "Medium"
+        suggested = "Medium"
+
+    risks = data.get("risk_indicators", [])
+    if not isinstance(risks, list):
+        risks = []
 
     return {
-        "category": data.get("category", ""),
-        "summary": data.get("summary", ""),
-        "risk_indicators": data.get("risk_indicators", []),
-        "suggested_priority": data.get("suggested_priority", "Medium"),
-        "explanation": data.get("explanation", ""),
-        "recommended_department": data.get("recommended_department", ""),
-        "suggested_action": data.get("suggested_action", ""),
+        "category": str(data.get("category", "")),
+        "summary": str(data.get("summary", "")),
+        "risk_indicators": risks,
+        "suggested_priority": suggested,
+        "explanation": str(data.get("explanation", "")),
+        "recommended_department": str(data.get("recommended_department", "")),
+        "suggested_action": str(data.get("suggested_action", "")),
+        "source": "gemini",
     }
 
-
-# ---------------------------------------------------------------------------
-# Fallback (when AI is unavailable)
-# ---------------------------------------------------------------------------
 
 def get_fallback_analysis(
     title: str,
@@ -171,10 +179,7 @@ def get_fallback_analysis(
     category: str,
     rule_result: dict[str, Any],
 ) -> dict[str, Any]:
-    """
-    Build a synthetic AI-style analysis dict from the rule-engine output.
-    Used when Ollama is not reachable.
-    """
+    """Build an AI-style response from the existing rule engine."""
     return {
         "category": category,
         "summary": f"[Rule-based] {title}",
@@ -187,3 +192,4 @@ def get_fallback_analysis(
         "suggested_action": rule_result["recommended_action"],
         "source": "rule-engine-fallback",
     }
+````
