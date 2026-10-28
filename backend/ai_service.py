@@ -1,10 +1,3 @@
-````python
-"""
-FixFirstAI - AI Service
-Supports Google Gemini cloud AI with Ollama compatibility
-and rule-based fallback.
-"""
-
 import json
 import logging
 import os
