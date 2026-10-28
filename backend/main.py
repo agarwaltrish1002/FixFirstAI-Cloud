@@ -38,6 +38,7 @@ from backend.ai_service import (
     check_model_available,
     analyze_with_ai,
     get_fallback_analysis,
+    get_ai_service_status,
 )
 from backend.analytics_engine import (
     compute_campus_risk_intelligence,
@@ -194,14 +195,8 @@ async def health_check():
 
 @app.get("/api/ai/status")
 async def ai_status():
-    """Detailed AI readiness check."""
-    ollama_ok = await check_ollama_available()
-    model_ok = await check_model_available() if ollama_ok else False
-    return {
-        "ollama_available": ollama_ok,
-        "model_loaded": model_ok,
-        "model_name": "qwen2.5-coder:7b",
-    }
+    """Detailed AI readiness and provider status check."""
+    return await get_ai_service_status()
 
 
 # ── Dashboard Stats ───────────────────────────────────────────────────────
@@ -781,3 +776,6 @@ async def serve_upload(filename: str):
         raise HTTPException(status_code=404, detail="File not found")
 
     return FileResponse(file_path)
+
+
+

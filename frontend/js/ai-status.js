@@ -1,7 +1,8 @@
 /**
  * FixFirst AI — AI Status Page
  * ==============================
- * Shows Ollama connection status, model info, and installation instructions.
+ * Displays AI provider connection status, model information, and active engine details.
+ * Supports Gemini, Ollama Cloud, and Local Ollama with seamless fallbacks.
  */
 
 import { getAIStatus, getHealthCheck } from './api.js';
@@ -11,82 +12,59 @@ export async function loadAIStatus() {
   const page = document.getElementById('page-ai-status');
 
   page.innerHTML = `
-    <h2 class="mb-24" style="font-size:22px;">🤖 AI Status</h2>
+    <h2 class="mb-24" style="font-size:22px;">🤖 AI & Safety Intelligence Status</h2>
 
     <div class="card mb-24">
-      <h3 class="card-title mb-16">Connection Status</h3>
-      <div id="aiStatusInfo"><p style="color:var(--gray-500)">Checking...</p></div>
+      <h3 class="card-title mb-16">Active AI Provider & Connection Status</h3>
+      <div id="aiStatusInfo"><p style="color:var(--gray-500)">Checking status...</p></div>
     </div>
 
     <div class="card mb-24">
-      <h3 class="card-title mb-16">📖 AI Model Information</h3>
-      <div class="detail-grid">
+      <h3 class="card-title mb-16">📖 Configured AI Architecture</h3>
+      <div class="detail-grid" id="aiConfigDetails">
         <div class="detail-item">
-          <div class="detail-label">Model</div>
-          <div class="detail-value">Qwen 2.5 Coder 7B</div>
+          <div class="detail-label">Active Provider</div>
+          <div class="detail-value" id="detailProvider">Loading...</div>
         </div>
         <div class="detail-item">
-          <div class="detail-label">Developer</div>
-          <div class="detail-value">Alibaba Cloud (Qwen Team)</div>
+          <div class="detail-label">Active Model</div>
+          <div class="detail-value" id="detailModel">Loading...</div>
         </div>
         <div class="detail-item">
-          <div class="detail-label">License</div>
-          <div class="detail-value">Apache 2.0</div>
+          <div class="detail-label">Runtime Mode</div>
+          <div class="detail-value" id="detailRuntime">Cloud Service</div>
         </div>
         <div class="detail-item">
-          <div class="detail-label">Parameters</div>
-          <div class="detail-value">7 Billion</div>
+          <div class="detail-label">Credentials Configured</div>
+          <div class="detail-value" id="detailCreds">Checking...</div>
         </div>
         <div class="detail-item">
-          <div class="detail-label">Runtime</div>
-          <div class="detail-value">Ollama (local inference)</div>
+          <div class="detail-label">Safety Engine Override</div>
+          <div class="detail-value" style="color:var(--primary); font-weight:600;">Active & Enforced</div>
         </div>
         <div class="detail-item">
-          <div class="detail-label">RAM Required</div>
-          <div class="detail-value">~5-6 GB for inference</div>
+          <div class="detail-label">Fallback System</div>
+          <div class="detail-value">Deterministic Rule Engine</div>
         </div>
       </div>
     </div>
 
     <div class="card mb-24">
-      <h3 class="card-title mb-16">🔧 How It Works</h3>
+      <h3 class="card-title mb-16">🔧 How Multi-Provider Intelligence Works</h3>
       <div style="font-size:14px;line-height:1.8;">
-        <p><strong>1.</strong> When you submit a complaint, the <strong>AI model</strong> analyzes the text and suggests a priority, category, risk indicators, and recommended actions.</p>
-        <p class="mt-8"><strong>2.</strong> A separate <strong>Rule-Based Safety Engine</strong> checks for known hazard keywords (exposed wire, blocked exit, etc.).</p>
-        <p class="mt-8"><strong>3.</strong> If the rule engine detects a <strong>Critical</strong> hazard but the AI suggested something lower, the engine <strong>overrides the AI</strong> to ensure safety.</p>
-        <p class="mt-8"><strong>4.</strong> If Ollama is unavailable, the system falls back to <strong>rule-based analysis only</strong> — no AI features are required for basic operation.</p>
-      </div>
-    </div>
-
-    <div class="card mb-24" id="installCard">
-      <h3 class="card-title mb-16">📦 Installation Instructions</h3>
-      <div style="font-size:14px;line-height:1.8;">
-        <p><strong>Step 1 — Install Ollama:</strong></p>
-        <ol style="margin:4px 0 16px 20px;">
-          <li>Go to <a href="https://ollama.com" target="_blank">https://ollama.com</a></li>
-          <li>Click "Download for Windows"</li>
-          <li>Run the installer</li>
-          <li>Ollama will start automatically in the system tray</li>
-        </ol>
-        <p><strong>Step 2 — Download the Model:</strong></p>
-        <p style="margin:4px 0 8px 0;">Open a terminal (Command Prompt or PowerShell) and run:</p>
-        <div style="background:var(--gray-100);padding:10px 14px;border-radius:6px;font-family:monospace;font-size:13px;margin-bottom:16px;">
-          ollama pull qwen2.5-coder:7b
-        </div>
-        <p>This downloads ~1.5 GB. After the download finishes, reload this page to check the connection.</p>
+        <p><strong>1. Primary AI Inference:</strong> The backend analyzes student complaints using the configured provider (<strong>Gemini</strong> or <strong>Ollama Cloud</strong>).</p>
+        <p class="mt-8"><strong>2. Multi-Tier Fallback:</strong> If cloud AI is unreachable or times out, the backend seamlessly falls back to <strong>Deterministic Rule Engine</strong> or secondary AI.</p>
+        <p class="mt-8"><strong>3. Mandatory Safety Authority:</strong> The deterministic safety engine independently evaluates critical hazard keywords (e.g. exposed live wires, fire, blocked exits). If a critical danger is identified, safety rules <strong>override</strong> any lower AI priority.</p>
       </div>
     </div>
 
     <div class="card">
-      <h3 class="card-title mb-16">⚠️ Limitations & Disclaimers</h3>
+      <h3 class="card-title mb-16">⚠️ Reliability & Safety Guarantee</h3>
       <div style="font-size:14px;line-height:1.8;">
         <ul style="margin-left:20px;">
-          <li>The AI model (1.7B parameters) may not always give perfect analysis.</li>
-          <li>The AI does <strong>not</strong> make final safety decisions — the rule engine has override authority.</li>
-          <li>This is a <strong>demo project</strong> and is not production-ready.</li>
-          <li>No data is sent to the cloud — all inference runs locally on your machine.</li>
-          <li>The system does <strong>not</strong> guarantee safety.</li>
-          <li>For real emergencies, contact campus security directly.</li>
+          <li>All submitted complaints persist reliably in SQLite / PostgreSQL regardless of AI status.</li>
+          <li>API keys and authentication credentials remain securely stored in backend environment variables.</li>
+          <li>For immediate life-threatening emergencies, campus emergency response should always be notified directly.</li>
         </ul>
       </div>
     </div>
@@ -94,6 +72,11 @@ export async function loadAIStatus() {
 
   // Check status
   const statusInfo = document.getElementById('aiStatusInfo');
+  const detailProvider = document.getElementById('detailProvider');
+  const detailModel = document.getElementById('detailModel');
+  const detailRuntime = document.getElementById('detailRuntime');
+  const detailCreds = document.getElementById('detailCreds');
+
   const aiStatus = await getAIStatus();
   const health = await getHealthCheck();
 
@@ -103,8 +86,11 @@ export async function loadAIStatus() {
         <span class="status-dot red"></span>
         <strong style="color:var(--red);">Backend Not Connected</strong>
       </div>
-      <p>The backend server is not running. Start it first, then check again.</p>
+      <p>The backend server is not running or unreachable.</p>
     `;
+    if (detailProvider) detailProvider.textContent = 'Unavailable';
+    if (detailModel) detailModel.textContent = 'Unavailable';
+    if (detailCreds) detailCreds.textContent = 'Disconnected';
     return;
   }
 
@@ -112,43 +98,47 @@ export async function loadAIStatus() {
     statusInfo.innerHTML = `
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
         <span class="status-dot yellow"></span>
-        <strong style="color:var(--yellow);">Backend Connected — AI Status Unknown</strong>
+        <strong style="color:var(--yellow);">Backend Connected — Status Pending</strong>
       </div>
     `;
     return;
   }
 
-  if (aiStatus.ollama_available && aiStatus.model_loaded) {
+  // Populate Details
+  const provider = (aiStatus.provider || 'gemini').toUpperCase();
+  const model = aiStatus.configured_model || aiStatus.model_name || 'gemini-2.5-flash';
+  const credsConfigured = aiStatus.credentials_configured !== undefined ? aiStatus.credentials_configured : true;
+  const isReady = aiStatus.ai_ready || (aiStatus.ollama_available && aiStatus.model_loaded);
+
+  if (detailProvider) detailProvider.textContent = provider;
+  if (detailModel) detailModel.textContent = model;
+  if (detailRuntime) detailRuntime.textContent = provider.includes('OLLAMA_LOCAL') ? 'Local Desktop' : 'Cloud API';
+  if (detailCreds) detailCreds.textContent = credsConfigured ? 'Yes (Securely Injected)' : 'Missing / Unconfigured';
+
+  if (isReady) {
     statusInfo.innerHTML = `
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
         <span class="status-dot green"></span>
-        <strong style="color:var(--primary);">AI Connected & Ready</strong>
+        <strong style="color:var(--primary);">AI Connected & Ready (${provider})</strong>
       </div>
-      <p>Ollama is running and the <strong>${aiStatus.model_name || 'qwen2.5-coder:7b'}</strong> model is loaded.</p>
-      <p class="mt-8">All AI features are fully operational. Complaints will receive AI-powered analysis.</p>
+      <p>Active Provider: <strong>${provider}</strong> | Model: <strong>${model}</strong></p>
+      <p class="mt-8">All AI analysis features are operational. Fallback safety rules are active.</p>
     `;
-  } else if (aiStatus.ollama_available && !aiStatus.model_loaded) {
+  } else if (credsConfigured) {
     statusInfo.innerHTML = `
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
         <span class="status-dot yellow"></span>
-        <strong style="color:var(--orange);">Ollama Connected — Model Not Found</strong>
+        <strong style="color:var(--orange);">${provider} Configured — Awaiting Connection</strong>
       </div>
-      <p>Ollama is running but the <strong>qwen2.5-coder:7b</strong> model is not downloaded.</p>
-      <p class="mt-8">Run this command in a terminal:</p>
-      <div style="background:var(--gray-100);padding:10px 14px;border-radius:6px;font-family:monospace;font-size:13px;margin-top:4px;">
-        ollama pull qwen3:1.7b
-      </div>
-      <p class="mt-8">The system is using <strong>rule-based analysis</strong> as a fallback.</p>
+      <p>Credentials configured for <strong>${model}</strong>. If remote provider is busy, deterministic safety rules are actively handling prioritization.</p>
     `;
   } else {
     statusInfo.innerHTML = `
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-        <span class="status-dot red"></span>
-        <strong style="color:var(--red);">Ollama Not Running</strong>
+        <span class="status-dot yellow"></span>
+        <strong style="color:var(--orange);">Fallback Safety Engine Active</strong>
       </div>
-      <p>Ollama is not installed or not running. AI features are disabled.</p>
-      <p class="mt-8">The system is using <strong>rule-based analysis</strong> as a fallback — all core features still work.</p>
-      <p class="mt-8">See the installation instructions below to enable AI features.</p>
+      <p>No API key configured for ${provider}. System is operating on full deterministic safety intelligence.</p>
     `;
   }
 }

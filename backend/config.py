@@ -25,10 +25,24 @@ BACKEND_PORT = int(os.getenv("PORT", os.getenv("BACKEND_PORT", 8001)))
 FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", 5174))
 
 # ---------------------------------------------------------------------------
-# Ollama (local AI) settings
+# AI Settings (Gemini, Ollama Cloud, Local Ollama)
 # ---------------------------------------------------------------------------
+AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
+
+# Gemini settings
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# Ollama Cloud settings
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
+OLLAMA_CLOUD_ENDPOINT = os.getenv("OLLAMA_CLOUD_ENDPOINT", "https://ollama.com/api/chat")
+
+# Ollama settings (Local / Cloud Model)
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
+OLLAMA_MODEL = os.getenv(
+    "OLLAMA_MODEL",
+    "gemma4:31b" if os.getenv("AI_PROVIDER", "").lower() == "ollama_cloud" else "qwen2.5-coder:7b"
+)
 
 # ---------------------------------------------------------------------------
 # File-upload constraints
