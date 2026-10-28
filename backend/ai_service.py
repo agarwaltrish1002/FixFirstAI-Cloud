@@ -185,4 +185,3 @@ def get_fallback_analysis(
         "suggested_action": rule_result["recommended_action"],
         "source": "rule-engine-fallback",
     }
-````
