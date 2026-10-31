@@ -23,13 +23,10 @@
       </div>
     </div>
     <nav class="sidebar-nav" id="sidebarNav">
+      <!-- Always visible -->
       <a href="#dashboard" class="nav-item active" data-page="dashboard">
         <span class="nav-icon">📊</span>
         <span class="nav-label">Dashboard</span>
-      </a>
-      <a href="#risk-intelligence" class="nav-item" data-page="risk-intelligence">
-        <span class="nav-icon">🧭</span>
-        <span class="nav-label">Risk Intelligence</span>
       </a>
       <a href="#submit" class="nav-item" data-page="submit">
         <span class="nav-icon">📝</span>
@@ -39,11 +36,25 @@
         <span class="nav-icon">📋</span>
         <span class="nav-label">Complaints</span>
       </a>
-      <a href="#tickets" class="nav-item" data-page="tickets">
+
+      <!-- Staff-only nav items -->
+      <a href="#ranked-queue" class="nav-item" data-page="ranked-queue" data-role="staff">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Urgency Queue</span>
+      </a>
+      <a href="#category-arranger" class="nav-item" data-page="category-arranger" data-role="staff">
+        <span class="nav-icon">📁</span>
+        <span class="nav-label">Category Arranger</span>
+      </a>
+      <a href="#risk-intelligence" class="nav-item" data-page="risk-intelligence" data-role="staff">
+        <span class="nav-icon">🧭</span>
+        <span class="nav-label">Risk Intelligence</span>
+      </a>
+      <a href="#tickets" class="nav-item" data-page="tickets" data-role="staff">
         <span class="nav-icon">🎫</span>
         <span class="nav-label">Tickets &amp; SLA</span>
       </a>
-      <a href="#ai-status" class="nav-item" data-page="ai-status">
+      <a href="#ai-status" class="nav-item" data-page="ai-status" data-role="staff">
         <span class="nav-icon">🤖</span>
         <span class="nav-label">AI Status</span>
       </a>
@@ -69,6 +80,8 @@
       <div class="header-right">
         <span class="connection-dot" id="connectionDot" title="Backend status"></span>
         <span class="connection-label" id="connectionLabel">Checking...</span>
+        <!-- Auth chip injected here by auth.js -->
+        <div id="userAuthContainer"></div>
       </div>
     </header>
 
@@ -97,6 +110,12 @@
 
       <!-- AI Status Page -->
       <section class="page" id="page-ai-status"></section>
+
+      <!-- Urgency Ranked Queue Page (staff only) -->
+      <section class="page" id="page-ranked-queue"></section>
+
+      <!-- Category Arranger Page (staff only) -->
+      <section class="page" id="page-category-arranger"></section>
     </main>
 
     <!-- Footer -->

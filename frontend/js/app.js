@@ -11,6 +11,9 @@ import { loadSubmitForm } from './submit.js';
 import { loadTickets } from './tickets.js';
 import { loadAIStatus } from './ai-status.js';
 import { loadRiskIntelligence } from './risk-intelligence.js';
+import { loadRankedQueue } from './ranked-queue.js';
+import { renderCategoryArranger } from './category-manager.js';
+import { initAuth, getAuthState, showLoginModal, updateHeaderUI } from './auth.js';
 
 // ---------------------------------------------------------------------------
 // Toast notification system
@@ -95,8 +98,12 @@ export function formatDate(isoStr) {
 
 /** Return a CSS class suffix for a priority level */
 export function priorityClass(priority) {
-  const map = { Critical: 'critical', High: 'high', Medium: 'medium', Low: 'low' };
-  return map[priority] || 'medium';
+  const p = (priority || '').toLowerCase();
+  if (p.includes('critical') || p.includes('p1')) return 'critical';
+  if (p.includes('high') || p.includes('p2')) return 'high';
+  if (p.includes('medium') || p.includes('p3')) return 'medium';
+  if (p.includes('low') || p.includes('p4')) return 'low';
+  return 'medium';
 }
 
 /** Return a CSS class suffix for a status */
@@ -125,11 +132,24 @@ export function statusBadge(status) {
 // SPA Router
 // ---------------------------------------------------------------------------
 
-const PAGES = ['dashboard', 'risk-intelligence', 'submit', 'complaints', 'tickets', 'ai-status'];
+const ALL_PAGES = ['dashboard', 'risk-intelligence', 'submit', 'complaints', 'tickets', 'ai-status', 'ranked-queue', 'category-arranger'];
+
+// Pages that only teachers/wardens can see
+const STAFF_ONLY_PAGES = ['ranked-queue', 'category-arranger', 'risk-intelligence', 'tickets'];
+
 let currentPage = 'dashboard';
 
 function navigateTo(page) {
-  if (!PAGES.includes(page)) page = 'dashboard';
+  if (!ALL_PAGES.includes(page)) page = 'dashboard';
+
+  // Role guard for staff-only pages
+  const auth = getAuthState();
+  const isStaff = auth.role === 'teacher' || auth.role === 'warden';
+  if (STAFF_ONLY_PAGES.includes(page) && !isStaff) {
+    showToast('That section is only available to Teachers and Wardens.', 'warning');
+    page = 'dashboard';
+  }
+
   currentPage = page;
 
   // Update sidebar active state
@@ -148,18 +168,39 @@ function navigateTo(page) {
 
   // Load page content
   switch (page) {
-    case 'dashboard':         loadDashboard(); break;
-    case 'risk-intelligence': loadRiskIntelligence(); break;
-    case 'submit':            loadSubmitForm(); break;
-    case 'complaints':        loadComplaints(); break;
-    case 'tickets':           loadTickets(); break;
-    case 'ai-status':         loadAIStatus(); break;
+    case 'dashboard':          loadDashboard(); break;
+    case 'risk-intelligence':  loadRiskIntelligence(); break;
+    case 'submit':             loadSubmitForm(); break;
+    case 'complaints':         loadComplaints(); break;
+    case 'tickets':            loadTickets(); break;
+    case 'ai-status':          loadAIStatus(); break;
+    case 'ranked-queue':       loadRankedQueue(); break;
+    case 'category-arranger':  renderCategoryArranger(); break;
   }
 }
 
 // Make navigateTo available globally for inline onclick handlers
 window.navigateTo = navigateTo;
 window.showComplaintDetail = showComplaintDetail;
+window.showToast = showToast;
+
+// ---------------------------------------------------------------------------
+// Role-based sidebar visibility
+// ---------------------------------------------------------------------------
+
+function updateSidebarForRole() {
+  const auth = getAuthState();
+  const isStaff = auth.role === 'teacher' || auth.role === 'warden';
+
+  document.querySelectorAll('.nav-item[data-role]').forEach(item => {
+    const requiredRole = item.getAttribute('data-role');
+    if (requiredRole === 'staff') {
+      item.style.display = isStaff ? '' : 'none';
+    } else if (requiredRole === 'student') {
+      item.style.display = isStaff ? 'none' : '';
+    }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Backend connection check
@@ -172,10 +213,27 @@ async function checkConnection() {
 
   if (health) {
     dot.className = 'connection-dot connected';
-    label.textContent = health.ollama_available ? 'AI Connected' : 'Backend OK';
+    label.textContent = health.ai_ready ? 'AI Connected' : 'Backend OK';
   } else {
     dot.className = 'connection-dot disconnected';
     label.textContent = 'Disconnected';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Auth change handler
+// ---------------------------------------------------------------------------
+
+function onAuthChange(authState) {
+  updateSidebarForRole();
+
+  // If current page is staff-only and user is now a student, redirect
+  const isStaff = authState.role === 'teacher' || authState.role === 'warden';
+  if (!isStaff && STAFF_ONLY_PAGES.includes(currentPage)) {
+    navigateTo('dashboard');
+  } else {
+    // Reload current page with new role context
+    navigateTo(currentPage);
   }
 }
 
@@ -226,7 +284,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Hash-based routing
+  // Initialise auth system — this will auto-login student1 for demo
+  initAuth(onAuthChange);
+
+  // Hash-based routing (auth change will also call navigateTo)
   const hash = window.location.hash.replace('#', '') || 'dashboard';
   navigateTo(hash);
 

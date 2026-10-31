@@ -39,6 +39,7 @@ export async function loadComplaints() {
         <option value="date-asc">Oldest First</option>
         <option value="priority-asc">Priority (High→Low)</option>
         <option value="priority-desc">Priority (Low→High)</option>
+        <option value="urgency-desc">🔥 Urgency (High→Low)</option>
       </select>
     </div>
 
@@ -100,6 +101,7 @@ async function fetchAndRender() {
 
   const rows = result.complaints.map(c => `
     <tr class="clickable" onclick="showComplaintDetail('${escapeHtml(c.id)}')">
+      ${c.urgency_rank ? `<td data-label="#"><span class="urgency-rank-badge ${c.urgency_rank <= 3 ? (c.urgency_rank === 1 ? 'rank-top' : 'rank-high') : ''}">#${c.urgency_rank}</span></td>` : '<td data-label="#"></td>'}
       <td data-label="ID"><strong>${escapeHtml(c.id)}</strong>${c.is_demo ? ' <span style="font-size:10px;color:var(--gray-500);">(demo)</span>' : ''}</td>
       <td data-label="Title" class="truncate" style="max-width:220px;">${escapeHtml(c.title)}</td>
       <td data-label="Location">${escapeHtml(c.location)}</td>
@@ -115,7 +117,7 @@ async function fetchAndRender() {
       <table class="table-mobile-cards">
         <thead>
           <tr>
-            <th>ID</th><th>Title</th><th>Location</th><th>Category</th><th>Priority</th><th>Status</th><th>Date</th>
+            <th>#</th><th>ID</th><th>Title</th><th>Location</th><th>Category</th><th>Priority</th><th>Status</th><th>Date</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>

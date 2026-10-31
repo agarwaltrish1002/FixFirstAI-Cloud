@@ -20,6 +20,11 @@ async function apiRequest(endpoint, options = {}) {
     headers: { 'Content-Type': 'application/json' },
   };
 
+  const token = localStorage.getItem('fixfirst_token');
+  if (token) {
+    defaults.headers['Authorization'] = `Bearer ${token}`;
+  }
+
   // Merge headers (don't override Content-Type for FormData)
   if (options.body instanceof FormData) {
     delete defaults.headers['Content-Type'];
@@ -218,4 +223,59 @@ export async function resolveTicket(ticketId, payload) {
     method: 'PUT',
     body: JSON.stringify(payload),
   });
+}
+
+
+/** Login with username and password */
+export async function loginUser(username, password) {
+  return await apiRequest('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+/** Get current user profile */
+export async function getMyProfile() {
+  try {
+    return await apiRequest('/api/auth/me');
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Get demo users list */
+export async function getDemoUsers() {
+  try {
+    return await apiRequest('/api/auth/demo-users');
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Pre-submission recommendation */
+export async function recommendComplaint(payload) {
+  return await apiRequest('/api/complaints/recommend', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Ranked complaints */
+export async function getRankedComplaints() {
+  try {
+    return await apiRequest('/api/complaints/ranked');
+  } catch (e) {
+    console.error('getRankedComplaints error:', e);
+    return null;
+  }
+}
+
+/** Category-wise complaints */
+export async function getCategoryWiseComplaints() {
+  try {
+    return await apiRequest('/api/complaints/by-category');
+  } catch (e) {
+    console.error('getCategoryWiseComplaints error:', e);
+    return null;
+  }
 }

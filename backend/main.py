@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Depends, Header, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
@@ -30,8 +30,29 @@ from backend.config import (
     MAX_UPLOAD_SIZE,
     ALLOWED_EXTENSIONS,
     CATEGORIES,
+    CATEGORY_DEPARTMENTS,
+    PRIORITY_LEVELS,
 )
-from backend.database import init_db, seed_demo_data, get_db, _next_complaint_id, _next_ticket_id
+from backend.database import (
+    init_db,
+    seed_demo_data,
+    get_db,
+    _next_complaint_id,
+    _next_ticket_id,
+    get_user_by_username,
+    get_user_by_id,
+)
+from backend.auth import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    verify_access_token,
+    get_current_user,
+    get_current_user_optional,
+    require_roles,
+)
+from backend.validation import validate_complaint_content
+from backend.ranking_engine import calculate_complaint_ranking, rank_all_complaints
 from backend.safety_engine import analyze_complaint as rule_analyze, override_priority
 from backend.ai_service import (
     check_ollama_available,
@@ -99,14 +120,28 @@ def _sanitise(value: str) -> str:
     return html.escape(clean.strip())
 
 
+class LoginRequest(BaseModel):
+    """Payload for user authentication."""
+    username: str = Field(..., min_length=2, max_length=50)
+    password: str = Field(..., min_length=3, max_length=100)
+
+
+class RecommendRequest(BaseModel):
+    """Payload for pre-submission category & priority recommendation."""
+    title: str = Field(..., min_length=2, max_length=200)
+    description: str = Field(..., min_length=4, max_length=2000)
+    location: Optional[str] = Field(default="", max_length=200)
+    category: Optional[str] = None
+
+
 class ComplaintCreate(BaseModel):
     """Payload for creating a new complaint."""
-    student_name: str = Field(..., min_length=2, max_length=100)
+    student_name: Optional[str] = Field(default="", max_length=100)
     location: str = Field(..., min_length=2, max_length=200)
     room_number: Optional[str] = Field(default="", max_length=50)
-    title: str = Field(..., min_length=5, max_length=200)
-    description: str = Field(..., min_length=10, max_length=2000)
-    category: str
+    title: str = Field(..., min_length=3, max_length=200)
+    description: str = Field(..., min_length=6, max_length=2000)
+    category: Optional[str] = Field(default=None)
     image_path: Optional[str] = None
 
     # Sanitise all text fields automatically
@@ -119,10 +154,13 @@ class ComplaintCreate(BaseModel):
 
     @field_validator("category")
     @classmethod
-    def validate_category(cls, v: str) -> str:
-        if v not in CATEGORIES:
-            raise ValueError(f"Invalid category. Must be one of: {', '.join(CATEGORIES)}")
-        return v
+    def validate_category(cls, v: Optional[str]) -> Optional[str]:
+        if v and v not in CATEGORIES:
+            for cat in CATEGORIES:
+                if cat.lower() in v.lower() or v.lower() in cat.lower():
+                    return cat
+            return "Other Maintenance"
+        return v or "Other Maintenance"
 
 
 class StatusUpdate(BaseModel):
@@ -199,25 +237,207 @@ async def ai_status():
     return await get_ai_service_status()
 
 
+# ── Authentication Endpoints ───────────────────────────────────────────────
+
+@app.post("/api/auth/login")
+async def login(data: LoginRequest):
+    """Authenticate student, warden, or teacher with PBKDF2 password hashing."""
+    user = get_user_by_username(data.username.strip().lower())
+    if not user or not verify_password(data.password, user["password_hash"], user["salt"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password. Please verify your credentials.",
+        )
+
+    token = create_access_token(
+        user_id=user["id"],
+        username=user["username"],
+        role=user["role"],
+        full_name=user["full_name"],
+    )
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user["id"],
+            "username": user["username"],
+            "role": user["role"],
+            "full_name": user["full_name"],
+            "department_or_hostel": user.get("department_or_hostel"),
+        },
+    }
+
+
+@app.get("/api/auth/me")
+async def get_my_profile(current_user: dict[str, Any] = Depends(get_current_user)):
+    """Return the currently authenticated user's profile and privileges."""
+    return {"user": current_user}
+
+
+@app.get("/api/auth/demo-users")
+async def get_demo_users():
+    """Return available demo accounts for seamless one-click role switching."""
+    return {
+        "accounts": [
+            {
+                "username": "student1",
+                "role": "student",
+                "full_name": "Aarav Sharma",
+                "label": "Student (Hostel H1 - Rm 204)",
+                "password": "Student@123",
+            },
+            {
+                "username": "student2",
+                "role": "student",
+                "full_name": "Diya Patel",
+                "label": "Student (Hostel H2 - Rm 112)",
+                "password": "Student@123",
+            },
+            {
+                "username": "warden1",
+                "role": "warden",
+                "full_name": "Rajesh Kumar",
+                "label": "Chief Hostel Warden",
+                "password": "Warden@123",
+            },
+            {
+                "username": "teacher1",
+                "role": "teacher",
+                "full_name": "Dr. Sunita Rao",
+                "label": "Faculty / Maintenance Committee",
+                "password": "Teacher@123",
+            },
+        ]
+    }
+
+
+# ── AI Auto-Classification & Recommendation ────────────────────────────────
+
+@app.post("/api/complaints/recommend")
+async def recommend_complaint(data: RecommendRequest):
+    """
+    Intelligent pre-submission recommendation:
+    1. Validates input text (flags nonsense / casual greetings / ambiguity).
+    2. Predicts automatic category across 10 standard categories.
+    3. Predicts P1–P4 priority with context explanation.
+    4. Recommends target maintenance department and suggested safety action.
+    5. Flags low confidence / manual review requirement if needed.
+    """
+    val = validate_complaint_content(data.title, data.description)
+    if not val["is_valid"]:
+        return {
+            "is_valid": False,
+            "status": val["status"],
+            "validation_message": val["message"],
+            "suggestion": val.get("suggestion"),
+            "is_ambiguous": val.get("is_ambiguous", False),
+            "clarification_prompt": val.get("clarification_prompt"),
+            "category": None,
+            "priority": None,
+        }
+
+    rule_res = rule_analyze(data.title, data.description, data.category or "Other Maintenance")
+    det_cat = rule_res.get("category", "Other Maintenance")
+
+    ai_res = None
+    try:
+        ai_res = await analyze_with_ai(data.title, data.description, det_cat)
+    except Exception:
+        pass
+
+    if ai_res:
+        merged = override_priority(
+            ai_priority=ai_res["suggested_priority"],
+            rule_priority=rule_res["priority"],
+            rule_reason=rule_res["reason"],
+        )
+        final_priority = merged["final_priority"]
+        priority_reason = merged["explanation"]
+        final_category = ai_res.get("category") or det_cat
+        suggested_action = ai_res.get("suggested_action") or rule_res.get("suggested_action")
+        confidence = ai_res.get("confidence", 0.92)
+        requires_manual_review = ai_res.get("requires_manual_review", False)
+    else:
+        final_priority = rule_res["priority"]
+        priority_reason = rule_res["reason"]
+        final_category = det_cat
+        suggested_action = rule_res.get("suggested_action", "Inspect and dispatch maintenance personnel.")
+        confidence = 0.88 if "Critical" in rule_res.get("priority", "") or "P1" in rule_res.get("priority", "") else 0.80
+        requires_manual_review = False
+
+    dept = CATEGORY_DEPARTMENTS.get(final_category, rule_res.get("department", "General Maintenance Services"))
+
+    return {
+        "is_valid": True,
+        "is_ambiguous": val.get("is_ambiguous", False),
+        "clarification_prompt": val.get("clarification_prompt"),
+        "validation_message": val["message"],
+        "category": final_category,
+        "priority": final_priority,
+        "priority_reason": priority_reason,
+        "department": dept,
+        "suggested_action": suggested_action,
+        "confidence": confidence,
+        "requires_manual_review": requires_manual_review,
+        "safety_warning": rule_res.get("safety_warning"),
+        "is_critical": "Critical" in final_priority or "P1" in final_priority,
+    }
+
+
 # ── Dashboard Stats ───────────────────────────────────────────────────────
 
 @app.get("/api/stats")
-async def get_stats():
-    """Return aggregate counts for the dashboard cards."""
+async def get_stats(current_user: Optional[dict[str, Any]] = Depends(get_current_user_optional)):
+    """Return aggregate counts for the dashboard cards, with role-aware metrics."""
     conn = get_db()
     try:
         total     = conn.execute("SELECT COUNT(*) AS c FROM complaints").fetchone()["c"]
-        critical  = conn.execute("SELECT COUNT(*) AS c FROM complaints WHERE priority = ?", ("Critical",)).fetchone()["c"]
-        high      = conn.execute("SELECT COUNT(*) AS c FROM complaints WHERE priority = ?", ("High",)).fetchone()["c"]
+        critical  = conn.execute("SELECT COUNT(*) AS c FROM complaints WHERE priority LIKE '%Critical%' OR priority LIKE '%P1%'").fetchone()["c"]
+        high      = conn.execute("SELECT COUNT(*) AS c FROM complaints WHERE priority LIKE '%High%' OR priority LIKE '%P2%'").fetchone()["c"]
         pending   = conn.execute("SELECT COUNT(*) AS c FROM complaints WHERE status = ?", ("Pending",)).fetchone()["c"]
         resolved  = conn.execute("SELECT COUNT(*) AS c FROM complaints WHERE status = ?", ("Resolved",)).fetchone()["c"]
-        return {
+
+        p1 = critical
+        p2 = high
+        p3 = conn.execute("SELECT COUNT(*) AS c FROM complaints WHERE priority LIKE '%Medium%' OR priority LIKE '%P3%'").fetchone()["c"]
+        p4 = conn.execute("SELECT COUNT(*) AS c FROM complaints WHERE priority LIKE '%Low%' OR priority LIKE '%P4%'").fetchone()["c"]
+
+        result = {
             "total": total,
             "critical": critical,
             "high": high,
             "pending": pending,
             "resolved": resolved,
+            "priority_distribution": {
+                "P1": p1,
+                "P2": p2,
+                "P3": p3,
+                "P4": p4,
+            },
         }
+
+        if current_user and current_user.get("role") == "student":
+            uid = current_user.get("sub")
+            uname = current_user.get("full_name") or current_user.get("username")
+            my_tot = conn.execute(
+                "SELECT COUNT(*) AS c FROM complaints WHERE student_id = ? OR student_name = ?",
+                (uid, uname),
+            ).fetchone()["c"]
+            my_pend = conn.execute(
+                "SELECT COUNT(*) AS c FROM complaints WHERE (student_id = ? OR student_name = ?) AND status != 'Resolved'",
+                (uid, uname),
+            ).fetchone()["c"]
+            my_res = conn.execute(
+                "SELECT COUNT(*) AS c FROM complaints WHERE (student_id = ? OR student_name = ?) AND status = 'Resolved'",
+                (uid, uname),
+            ).fetchone()["c"]
+            result["student_stats"] = {
+                "my_total": my_tot,
+                "my_pending": my_pend,
+                "my_resolved": my_res,
+            }
+
+        return result
     finally:
         conn.close()
 
@@ -230,6 +450,63 @@ async def list_categories():
     return {"categories": CATEGORIES}
 
 
+# ── Urgency Ranked Queue (Teachers / Wardens) ──────────────────────────────
+
+@app.get("/api/complaints/ranked")
+async def list_ranked_complaints(
+    current_user: Optional[dict[str, Any]] = Depends(get_current_user_optional),
+):
+    """
+    Returns all active complaints dynamically ranked from most urgent to least urgent
+    using the multi-factor ranking algorithm.
+    """
+    conn = get_db()
+    try:
+        rows = conn.execute("SELECT * FROM complaints WHERE status != 'Resolved'").fetchall()
+        complaints_list = [_row_to_dict(r) for r in rows]
+        ranked = rank_all_complaints(complaints_list)
+        return {
+            "total_ranked": len(ranked),
+            "ranked_complaints": ranked,
+        }
+    finally:
+        conn.close()
+
+
+# ── Category-wise Complaint Arranger ───────────────────────────────────────
+
+@app.get("/api/complaints/by-category")
+async def list_complaints_by_category():
+    """
+    Groups complaints across the 10 standard categories,
+    each containing summary statistics and sorted priority queue.
+    """
+    conn = get_db()
+    try:
+        rows = conn.execute("SELECT * FROM complaints").fetchall()
+        all_complaints = [_row_to_dict(r) for r in rows]
+
+        categories_data = []
+        for cat in CATEGORIES:
+            matching = [c for c in all_complaints if c.get("category") == cat]
+            crit_count = sum(1 for c in matching if "Critical" in str(c.get("priority")) or "P1" in str(c.get("priority")))
+            pend_count = sum(1 for c in matching if c.get("status") == "Pending")
+            matching.sort(key=lambda x: x.get("ranking_score") or 0.0, reverse=True)
+
+            categories_data.append({
+                "category": cat,
+                "department": CATEGORY_DEPARTMENTS.get(cat, "General Maintenance Services"),
+                "total_complaints": len(matching),
+                "critical_complaints": crit_count,
+                "pending_complaints": pend_count,
+                "complaints": matching,
+            })
+
+        return {"categories": categories_data}
+    finally:
+        conn.close()
+
+
 # ── Complaints CRUD ───────────────────────────────────────────────────────
 
 @app.get("/api/complaints")
@@ -238,23 +515,37 @@ async def list_complaints(
     priority: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
-    sort_by: Optional[str] = Query("date"),      # "date" | "priority"
+    student_id: Optional[str] = Query(None),
+    mine_only: Optional[bool] = Query(False),
+    sort_by: Optional[str] = Query("date"),      # "date" | "priority" | "urgency"
     order: Optional[str] = Query("desc"),          # "asc" | "desc"
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
+    current_user: Optional[dict[str, Any]] = Depends(get_current_user_optional),
 ):
-    """List complaints with optional filtering, sorting, and pagination."""
+    """List complaints with optional filtering, sorting, pagination, and role-based scoping."""
     conn = get_db()
     try:
         clauses: list[str] = []
         params: list[Any] = []
 
+        # Role enforcement: if logged in as student, restrict to their own complaints
+        if current_user and current_user.get("role") == "student":
+            clauses.append("(student_id = ? OR student_name = ?)")
+            params.extend([current_user.get("sub"), current_user.get("full_name") or current_user.get("username")])
+        elif mine_only and current_user:
+            clauses.append("(student_id = ? OR student_name = ?)")
+            params.extend([current_user.get("sub"), current_user.get("full_name") or current_user.get("username")])
+        elif student_id:
+            clauses.append("student_id = ?")
+            params.append(student_id)
+
         if status:
             clauses.append("status = ?")
             params.append(status)
         if priority:
-            clauses.append("priority = ?")
-            params.append(priority)
+            clauses.append("priority LIKE ?")
+            params.append(f"%{priority}%")
         if category:
             clauses.append("category = ?")
             params.append(category)
@@ -265,28 +556,26 @@ async def list_complaints(
 
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
 
-        # Sorting
-        priority_order = (
-            "CASE priority "
-            "WHEN 'Critical' THEN 0 "
-            "WHEN 'High' THEN 1 "
-            "WHEN 'Medium' THEN 2 "
-            "WHEN 'Low' THEN 3 "
-            "ELSE 4 END"
-        )
-
-        if sort_by == "priority":
+        if sort_by == "urgency":
+            order_clause = f"COALESCE(ranking_score, 0) {'DESC' if order == 'desc' else 'ASC'}"
+        elif sort_by == "priority":
+            priority_order = (
+                "CASE "
+                "WHEN priority LIKE '%Critical%' OR priority LIKE '%P1%' THEN 0 "
+                "WHEN priority LIKE '%High%' OR priority LIKE '%P2%' THEN 1 "
+                "WHEN priority LIKE '%Medium%' OR priority LIKE '%P3%' THEN 2 "
+                "WHEN priority LIKE '%Low%' OR priority LIKE '%P4%' THEN 3 "
+                "ELSE 4 END"
+            )
             order_clause = f"{priority_order} {'DESC' if order == 'desc' else 'ASC'}"
         else:
             order_clause = f"created_at {'DESC' if order == 'desc' else 'ASC'}"
 
-        # Count (for pagination metadata)
         count_row = conn.execute(
             f"SELECT COUNT(*) AS c FROM complaints{where}", params
         ).fetchone()
         total = count_row["c"]
 
-        # Fetch page
         offset = (page - 1) * per_page
         rows = conn.execute(
             f"SELECT * FROM complaints{where} ORDER BY {order_clause} LIMIT ? OFFSET ?",
@@ -298,7 +587,7 @@ async def list_complaints(
             "total": total,
             "page": page,
             "per_page": per_page,
-            "total_pages": max(1, -(-total // per_page)),  # ceil division
+            "total_pages": max(1, -(-total // per_page)),
         }
     finally:
         conn.close()
@@ -320,31 +609,62 @@ async def get_complaint(complaint_id: str):
 
 
 @app.post("/api/complaints", status_code=201)
-async def create_complaint(data: ComplaintCreate):
+async def create_complaint(
+    data: ComplaintCreate,
+    current_user: Optional[dict[str, Any]] = Depends(get_current_user_optional),
+):
     """
     Submit a new complaint.
-    1. Validate & sanitise input (done by Pydantic).
-    2. Run the rule-based safety engine.
-    3. Attempt AI analysis via Ollama (fall back to rules if unavailable).
-    4. Merge priorities (rule engine can override AI if Critical).
-    5. Save to database and return the complaint with analysis.
+    1. Pre-validate complaint content (reject chit-chat, nonsense, casual greetings).
+    2. Run the rule-based safety engine (deterministic 0ms safety override).
+    3. Run AI analysis (Gemini / Ollama / Fallback).
+    4. Merge priorities (rule engine enforces Critical override).
+    5. Compute multi-factor urgency ranking score.
+    6. Persist to database with student role mapping and ranking metadata.
+    7. Recalculate dynamic urgency rank across all active complaints.
     """
+    # Step 0: Input Pre-validation
+    val = validate_complaint_content(data.title, data.description)
+    if not val["is_valid"]:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "INVALID_COMPLAINT",
+                "message": val["message"],
+                "suggestion": val.get("suggestion", "Please submit a specific campus facility or maintenance issue."),
+                "is_ambiguous": val.get("is_ambiguous", False),
+            },
+        )
+
     conn = get_db()
     try:
         now = datetime.now(timezone.utc).isoformat()
         complaint_id = _next_complaint_id(conn)
 
-        # ── Step 1: Rule-based analysis ─────────────────────────────────
-        rule_result = rule_analyze(data.title, data.description, data.category)
+        # Resolve student info
+        student_id = None
+        student_name = (data.student_name or "").strip()
+        if current_user:
+            student_id = current_user.get("sub")
+            if not student_name or student_name.lower() in ("student", "user", "anonymous"):
+                student_name = current_user.get("full_name") or current_user.get("username")
+        if not student_name:
+            student_name = "Campus Student"
 
-        # ── Step 2: AI analysis (may be None) ───────────────────────────
+        input_category = data.category or "Other Maintenance"
+
+        # Step 1: Rule-based analysis
+        rule_result = rule_analyze(data.title, data.description, input_category)
+        detected_category = rule_result.get("category", input_category)
+
+        # Step 2: AI analysis
         ai_result = None
         try:
-            ai_result = await analyze_with_ai(data.title, data.description, data.category)
+            ai_result = await analyze_with_ai(data.title, data.description, detected_category)
         except Exception:
-            pass  # never crash on AI failure
+            pass
 
-        # ── Step 3: Merge priorities ────────────────────────────────────
+        # Step 3: Merge priorities
         if ai_result:
             merged = override_priority(
                 ai_priority=ai_result["suggested_priority"],
@@ -353,59 +673,87 @@ async def create_complaint(data: ComplaintCreate):
             )
             final_priority = merged["final_priority"]
             priority_reason = merged["explanation"]
-            # Combine AI + rule analyses into one JSON blob
+            final_category = ai_result.get("category") or detected_category
             analysis_blob = {
                 **ai_result,
                 "rule_engine": rule_result,
                 "priority_override": merged,
+                "validation": val,
             }
         else:
-            # No AI → use rule engine only
             final_priority = rule_result["priority"]
             priority_reason = rule_result["reason"]
+            final_category = detected_category
             fallback = get_fallback_analysis(
-                data.title, data.description, data.category, rule_result
+                data.title, data.description, final_category, rule_result
             )
             analysis_blob = {
                 **fallback,
                 "rule_engine": rule_result,
+                "validation": val,
             }
 
-        # ── Step 4: Persist to database ─────────────────────────────────
+        # Step 4: Urgency Ranking
+        rank_data = calculate_complaint_ranking({
+            "priority": final_priority,
+            "title": data.title,
+            "description": data.description,
+            "location": data.location,
+            "created_at": now,
+        })
+        ranking_score = rank_data.get("ranking_score", 0.0)
+        ranking_reason = rank_data.get("ranking_reason", "")
+        affected_scope = rank_data.get("affected_scope", "Single Room / Localized")
+        damage_risk = rank_data.get("damage_risk", "Contained")
+
+        dept = CATEGORY_DEPARTMENTS.get(final_category, rule_result.get("department", "General Maintenance Services"))
+
+        # Step 5: Save
         conn.execute(
             """
             INSERT INTO complaints
-                (id, student_name, location, room_number, title, description,
+                (id, student_id, student_name, location, room_number, title, description,
                  category, image_path, status, priority, priority_reason,
                  ai_analysis, assigned_department, created_at, updated_at,
-                 is_demo)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 is_demo, ranking_score, urgency_rank, ranking_reason, affected_scope, damage_risk)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 complaint_id,
-                data.student_name,
+                student_id,
+                student_name,
                 data.location,
                 data.room_number or "",
                 data.title,
                 data.description,
-                data.category,
+                final_category,
                 data.image_path,
                 "Pending",
                 final_priority,
                 priority_reason,
                 json.dumps(analysis_blob),
-                rule_result["department"],
+                dept,
                 now,
                 now,
-                0,  # not demo
+                0,
+                ranking_score,
+                None,
+                ranking_reason,
+                affected_scope,
+                damage_risk,
             ),
         )
         conn.commit()
 
-        # Return the newly created complaint
-        row = conn.execute(
-            "SELECT * FROM complaints WHERE id = ?", (complaint_id,)
-        ).fetchone()
+        # Update ranks for all active complaints
+        active_rows = conn.execute(
+            "SELECT * FROM complaints WHERE status != 'Resolved' ORDER BY ranking_score DESC"
+        ).fetchall()
+        for idx, row in enumerate(active_rows, start=1):
+            conn.execute("UPDATE complaints SET urgency_rank = ? WHERE id = ?", (idx, row["id"]))
+        conn.commit()
+
+        row = conn.execute("SELECT * FROM complaints WHERE id = ?", (complaint_id,)).fetchone()
         return _row_to_dict(row)
     finally:
         conn.close()
@@ -554,24 +902,41 @@ async def preview_complaint_risk(data: ComplaintPreview):
             "safety_warning": None,
             "immediate_advice": "Describe the location and issue clearly.",
             "is_critical": False,
+            "is_valid": True,
         }
 
-    rule_result = rule_analyze(data.title, data.description, data.category or "Other")
-    is_critical = rule_result.get("priority") == "Critical"
+    val = validate_complaint_content(data.title, data.description)
+    if not val["is_valid"]:
+        return {
+            "predicted_priority": "Invalid",
+            "safety_warning": None,
+            "immediate_advice": val["message"],
+            "is_critical": False,
+            "is_valid": False,
+            "validation_message": val["message"],
+            "suggestion": val.get("suggestion"),
+        }
+
+    rule_result = rule_analyze(data.title, data.description, data.category or "Other Maintenance")
+    is_critical = "Critical" in rule_result.get("priority", "") or "P1" in rule_result.get("priority", "")
 
     if is_critical:
         immediate_advice = "[SAFETY ALERT] Potential emergency hazard. Stay at least 5 meters away and do NOT touch anything."
-    elif rule_result.get("priority") == "High":
+    elif "High" in rule_result.get("priority", "") or "P2" in rule_result.get("priority", ""):
         immediate_advice = "[Caution] Please warn others nearby and avoid the immediate area."
     else:
         immediate_advice = "Standard maintenance review will be scheduled."
 
     return {
         "predicted_priority": rule_result.get("priority"),
+        "predicted_category": rule_result.get("category"),
         "predicted_department": rule_result.get("department"),
         "safety_warning": rule_result.get("safety_warning"),
         "immediate_advice": immediate_advice,
         "is_critical": is_critical,
+        "is_valid": True,
+        "is_ambiguous": val.get("is_ambiguous", False),
+        "clarification_prompt": val.get("clarification_prompt"),
         "priority_reason": rule_result.get("reason"),
     }
 

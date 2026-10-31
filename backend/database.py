@@ -11,7 +11,7 @@ import json
 import os
 import sqlite3
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from backend.config import DATABASE_PATH
 
@@ -37,11 +37,22 @@ def get_db() -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 
 def init_db() -> None:
-    """Create the complaints and tickets tables if they don't already exist and apply migrations."""
+    """Create the complaints, tickets, and users tables if they don't exist and apply migrations."""
     conn = get_db()
     try:
         conn.executescript(
             """
+            CREATE TABLE IF NOT EXISTS users (
+                id                  TEXT PRIMARY KEY,
+                username            TEXT UNIQUE NOT NULL,
+                full_name           TEXT NOT NULL,
+                role                TEXT NOT NULL,
+                password_hash       TEXT NOT NULL,
+                salt                TEXT NOT NULL,
+                department_or_hostel TEXT,
+                created_at          TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS complaints (
                 id              TEXT PRIMARY KEY,
                 student_name    TEXT NOT NULL,
@@ -54,11 +65,17 @@ def init_db() -> None:
                 status          TEXT NOT NULL DEFAULT 'Pending',
                 priority        TEXT NOT NULL DEFAULT 'Medium',
                 priority_reason TEXT,
-                ai_analysis     TEXT,          -- JSON string
+                ai_analysis     TEXT,
                 assigned_department TEXT,
                 created_at      TEXT NOT NULL,
                 updated_at      TEXT NOT NULL,
-                is_demo         INTEGER NOT NULL DEFAULT 0
+                is_demo         INTEGER NOT NULL DEFAULT 0,
+                student_id      TEXT,
+                urgency_rank    INTEGER,
+                ranking_score   REAL,
+                ranking_reason  TEXT,
+                affected_scope  TEXT,
+                damage_risk     TEXT
             );
 
             CREATE TABLE IF NOT EXISTS tickets (
@@ -84,9 +101,8 @@ def init_db() -> None:
             """
         )
 
-        # Migration: ensure new columns exist in existing database files
-        existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(tickets)").fetchall()}
-        migration_cols = [
+        existing_ticket_cols = {row["name"] for row in conn.execute("PRAGMA table_info(tickets)").fetchall()}
+        migration_ticket_cols = [
             ("technician_name", "TEXT"),
             ("root_cause", "TEXT"),
             ("preventive_action", "TEXT"),
@@ -94,14 +110,106 @@ def init_db() -> None:
             ("sla_target_at", "TEXT"),
             ("resolved_at", "TEXT"),
         ]
-        for col_name, col_def in migration_cols:
-            if col_name not in existing_cols:
+        for col_name, col_def in migration_ticket_cols:
+            if col_name not in existing_ticket_cols:
                 conn.execute(f"ALTER TABLE tickets ADD COLUMN {col_name} {col_def}")
+
+        existing_complaint_cols = {row["name"] for row in conn.execute("PRAGMA table_info(complaints)").fetchall()}
+        migration_complaint_cols = [
+            ("student_id", "TEXT"),
+            ("urgency_rank", "INTEGER"),
+            ("ranking_score", "REAL"),
+            ("ranking_reason", "TEXT"),
+            ("affected_scope", "TEXT"),
+            ("damage_risk", "TEXT"),
+        ]
+        for col_name, col_def in migration_complaint_cols:
+            if col_name not in existing_complaint_cols:
+                conn.execute(f"ALTER TABLE complaints ADD COLUMN {col_name} {col_def}")
 
         conn.commit()
     finally:
         conn.close()
 
+    seed_demo_users()
+
+
+def seed_demo_users() -> None:
+    """Seed initial demo accounts for Student and Teacher/Warden roles with secure password hashes."""
+    from backend.auth import hash_password
+
+    conn = get_db()
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        demo_users = [
+            {
+                "id": "USR-STU-001",
+                "username": "student1",
+                "full_name": "Aarav Sharma",
+                "role": "student",
+                "password": "Student@123",
+                "department_or_hostel": "Hostel Block B (Room 204)",
+            },
+            {
+                "id": "USR-STU-002",
+                "username": "student2",
+                "full_name": "Diya Patel",
+                "role": "student",
+                "password": "Student@123",
+                "department_or_hostel": "Hostel Block A (Room 112)",
+            },
+            {
+                "id": "USR-WRD-001",
+                "username": "warden1",
+                "full_name": "Prof. Rajesh Verma",
+                "role": "warden",
+                "password": "Warden@123",
+                "department_or_hostel": "Chief Warden Office & Estate Admin",
+            },
+            {
+                "id": "USR-TCH-001",
+                "username": "teacher1",
+                "full_name": "Dr. Sunita Rao",
+                "role": "teacher",
+                "password": "Teacher@123",
+                "department_or_hostel": "Academic Affairs & Maintenance Committee",
+            },
+        ]
+
+        for u in demo_users:
+            existing = conn.execute("SELECT id FROM users WHERE username = ?", (u["username"],)).fetchone()
+            if not existing:
+                pwd_hash, salt = hash_password(u["password"])
+                conn.execute(
+                    """
+                    INSERT INTO users (id, username, full_name, role, password_hash, salt, department_or_hostel, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (u["id"], u["username"], u["full_name"], u["role"], pwd_hash, salt, u["department_or_hostel"], now),
+                )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_user_by_username(username: str):
+    """Fetch user record by username."""
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_user_by_id(user_id: str):
+    """Fetch user record by ID."""
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
 
 # ---------------------------------------------------------------------------
 # Next-ID helpers  (CMP-001, TKT-001 …)
