@@ -1,22 +1,34 @@
 /**
- * FixFirst AI — Submit Complaint Page
- * =====================================
- * Renders the complaint form, validates inputs, and POSTs to the API.
+ * FixFirst AI — Smart Complaint Submission
+ * ==========================================
+ * Features:
+ *   • Real-time AI complaint validation (rejects chit-chat & food orders)
+ *   • Ambiguity detection prompting user for clarity
+ *   • Automatic Category Classification across 10 standard categories
+ *   • Contextual P1–P4 Priority Prediction with Safety Engine override
+ *   • Recommended department routing and suggested safety actions
  */
 
-import { submitComplaint, uploadImage, getCategories, previewComplaintRisk } from './api.js';
-import { showToast, escapeHtml, priorityBadge } from './app.js';
+import { submitComplaint, uploadImage, getCategories, recommendComplaint } from './api.js';
+import { showToast, escapeHtml } from './app.js';
+import { getAuthState } from './auth.js';
 
 let selectedFile = null;
+let lastRecommendation = null;
 
 export async function loadSubmitForm() {
   const page = document.getElementById('page-submit');
+  if (!page) return;
 
-  // Fetch categories
+  const authState = getAuthState();
+  const defaultStudentName = (authState.user && authState.user.full_name) || '';
+
+  // Fetch standard 10 categories
   const catData = await getCategories();
   const categories = catData ? catData.categories : [
-    'Electrical Safety', 'Water Leakage', 'Infrastructure', 'Hygiene',
-    'Emergency Exit', 'Lighting', 'Drinking Water', 'Other',
+    'Electrical', 'Plumbing', 'Hygiene & Sanitation', 'Civil Infrastructure',
+    'Furniture', 'Fire Safety', 'Security', 'IT & Networking',
+    'HVAC & Ventilation', 'Other Maintenance',
   ];
 
   const catOptions = categories.map(c =>
@@ -24,157 +36,152 @@ export async function loadSubmitForm() {
   ).join('');
 
   page.innerHTML = `
-    <h2 class="mb-24" style="font-size:22px;">📝 Submit a Complaint</h2>
-    <div class="card" style="max-width:720px;">
-      <form id="complaintForm" novalidate>
-        <div class="form-group">
-          <label class="form-label">Student Name <span class="form-hint">(optional)</span></label>
-          <input type="text" class="form-input" id="f-name" placeholder="e.g. Arjun Mehta" maxlength="100">
-        </div>
+    <div class="submit-container" style="max-width:760px; margin:0 auto;">
+      <div class="page-header mb-20">
+        <h2 class="page-title">📝 Submit Campus Maintenance Complaint</h2>
+        <p class="text-muted">AI-powered intake pipeline automatically validates, categorizes, and ranks priority.</p>
+      </div>
 
-        <div class="form-row">
+      <div class="card">
+        <form id="complaintForm" novalidate>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Student Name / Submitter</label>
+              <input type="text" class="form-input" id="f-name" value="${escapeHtml(defaultStudentName)}" placeholder="e.g. Aarav Sharma" maxlength="100">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Room / Hall Number</label>
+              <input type="text" class="form-input" id="f-room" placeholder="e.g. Room 204 or Lab 3" maxlength="50">
+            </div>
+          </div>
+
           <div class="form-group">
             <label class="form-label">Location / Building <span class="required">*</span></label>
-            <input type="text" class="form-input" id="f-location" placeholder="e.g. Academic Block A" required maxlength="200">
+            <input type="text" class="form-input" id="f-location" placeholder="e.g. Academic Block A, Hostel H1, Library" required maxlength="200">
             <div class="form-error" id="err-location"></div>
           </div>
+
           <div class="form-group">
-            <label class="form-label">Room Number</label>
-            <input type="text" class="form-input" id="f-room" placeholder="e.g. 204" maxlength="50">
+            <label class="form-label">Complaint Title <span class="required">*</span></label>
+            <input type="text" class="form-input" id="f-title" placeholder="e.g. Burning smell from electrical socket" required minlength="4" maxlength="200">
+            <div class="form-error" id="err-title"></div>
           </div>
-        </div>
 
-        <div class="form-group">
-          <label class="form-label">Complaint Title <span class="required">*</span></label>
-          <input type="text" class="form-input" id="f-title" placeholder="Short title of the issue" required minlength="5" maxlength="200">
-          <div class="form-error" id="err-title"></div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Description <span class="required">*</span></label>
-          <textarea class="form-textarea" id="f-desc" placeholder="Describe the issue in detail..." required minlength="10" maxlength="2000"></textarea>
-          <div class="form-error" id="err-desc"></div>
-          <div class="form-hint" id="desc-count">0 / 2000 characters</div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Category <span class="required">*</span></label>
-          <select class="form-select" id="f-category" required>
-            <option value="">Select a category</option>
-            ${catOptions}
-          </select>
-          <div class="form-error" id="err-category"></div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Photo (optional)</label>
-          <div class="file-upload" id="fileUploadArea">
-            <div class="file-upload-icon">📷</div>
-            <p class="file-upload-text">Click or drag an image here<br><strong>JPG, PNG, GIF, WebP</strong> — Max 5 MB</p>
-            <input type="file" id="f-image" accept=".jpg,.jpeg,.png,.gif,.webp" style="display:none;">
+          <div class="form-group">
+            <label class="form-label">Detailed Description <span class="required">*</span></label>
+            <textarea class="form-textarea" id="f-desc" rows="4" placeholder="Describe the problem, hazard signs, or physical equipment involved..." required minlength="8" maxlength="2000"></textarea>
+            <div class="form-error" id="err-desc"></div>
+            <div class="form-hint" id="desc-count">0 / 2000 characters</div>
           </div>
-          <div class="file-preview" id="filePreview" style="display:none;"></div>
-          <div class="form-error" id="err-image"></div>
-        </div>
 
-        <!-- Live AI Pre-Submission Safety Assessment -->
-        <div id="liveSafetyPreview" style="display:none;margin-top:20px;border-radius:var(--radius);padding:14px 16px;border:1.5px solid var(--gray-200);background:var(--gray-50);transition:all 0.3s ease;">
-          <div class="flex justify-between items-center mb-6">
-            <span style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--gray-500);letter-spacing:0.5px;">
-              ⚡ Live Safety &amp; Risk Preview
-            </span>
-            <span id="previewPriorityBadge" class="badge badge-medium">Evaluating...</span>
+          <!-- Real-Time AI Intelligence Preview -->
+          <div id="aiRecommendationCard" class="ai-recommendation-card" style="display:none;"></div>
+
+          <div class="form-group mt-16">
+            <div class="d-flex justify-between align-items-center mb-6">
+              <label class="form-label mb-0">Maintenance Category <span class="required">*</span></label>
+              <span id="autoCategoryTag" class="badge-ai-auto" style="display:none;">✨ Auto-Detected</span>
+            </div>
+            <select class="form-select" id="f-category" required>
+              <option value="">Select or let AI auto-detect</option>
+              ${catOptions}
+            </select>
+            <div class="form-error" id="err-category"></div>
           </div>
-          <p id="previewAdviceText" style="font-size:13px;font-weight:600;margin-bottom:4px;color:var(--gray-900);">
-            Analyzing description...
-          </p>
-          <p id="previewReasonText" style="font-size:12px;color:var(--gray-700);margin-bottom:0;line-height:1.4;">
-          </p>
-        </div>
 
-        <div style="display:flex;gap:12px;margin-top:24px;">
-          <button type="submit" class="btn btn-primary" id="submitBtn">🚀 Submit Complaint</button>
-          <button type="reset" class="btn btn-secondary">Clear Form</button>
-        </div>
-      </form>
+          <div class="form-group">
+            <label class="form-label">Photo Attachment (optional)</label>
+            <div class="file-upload" id="fileUploadArea">
+              <div class="file-upload-icon">📷</div>
+              <p class="file-upload-text">Click or drag photo here<br><strong>JPG, PNG, GIF, WebP</strong> — Max 5 MB</p>
+              <input type="file" id="f-image" accept=".jpg,.jpeg,.png,.gif,.webp" style="display:none;">
+            </div>
+            <div class="file-preview" id="filePreview" style="display:none;"></div>
+            <div class="form-error" id="err-image"></div>
+          </div>
+
+          <div class="submit-actions mt-24">
+            <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+              🚀 Submit Complaint
+            </button>
+            <button type="reset" class="btn btn-outline-secondary">
+              Clear Form
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   `;
 
-  // Wire up events
+  // Wire elements
   const form = document.getElementById('complaintForm');
+  const titleField = document.getElementById('f-title');
   const descField = document.getElementById('f-desc');
+  const locField = document.getElementById('f-location');
+  const catField = document.getElementById('f-category');
   const descCount = document.getElementById('desc-count');
+  const aiCard = document.getElementById('aiRecommendationCard');
+  const autoTag = document.getElementById('autoCategoryTag');
   const fileInput = document.getElementById('f-image');
   const uploadArea = document.getElementById('fileUploadArea');
   const preview = document.getElementById('filePreview');
+  const submitBtn = document.getElementById('submitBtn');
 
   selectedFile = null;
+  lastRecommendation = null;
 
-  // Character counter and Live Safety Assessment
-  const titleField = document.getElementById('f-title');
-  const catField = document.getElementById('f-category');
-  const livePreviewBox = document.getElementById('liveSafetyPreview');
-  const previewBadge = document.getElementById('previewPriorityBadge');
-  const previewAdvice = document.getElementById('previewAdviceText');
-  const previewReason = document.getElementById('previewReasonText');
+  // Real-time AI Analysis Debounce
+  let recDebounce = null;
+  let userManuallyChangedCategory = false;
 
-  let previewDebounce = null;
-  const updateLivePreview = () => {
-    clearTimeout(previewDebounce);
-    previewDebounce = setTimeout(async () => {
-      const titleVal = titleField ? titleField.value.trim() : '';
-      const descVal = descField ? descField.value.trim() : '';
-      const catVal = catField ? catField.value : '';
+  catField.addEventListener('change', () => {
+    userManuallyChangedCategory = true;
+    if (autoTag) autoTag.style.display = 'none';
+  });
+
+  const runLiveRecommendation = () => {
+    clearTimeout(recDebounce);
+    recDebounce = setTimeout(async () => {
+      const titleVal = titleField.value.trim();
+      const descVal = descField.value.trim();
+      const locVal = locField.value.trim();
 
       if (titleVal.length < 3 && descVal.length < 5) {
-        livePreviewBox.style.display = 'none';
+        aiCard.style.display = 'none';
         return;
       }
 
-      const res = await previewComplaintRisk({ title: titleVal, description: descVal, category: catVal });
-      if (!res) return;
+      try {
+        const res = await recommendComplaint({
+          title: titleVal,
+          description: descVal,
+          location: locVal,
+          category: catField.value || undefined,
+        });
 
-      livePreviewBox.style.display = 'block';
-      const prio = res.predicted_priority || 'Medium';
-      previewBadge.className = `badge badge-${prio.toLowerCase()}`;
-      previewBadge.textContent = prio;
-
-      if (res.is_critical) {
-        livePreviewBox.style.border = '1.5px solid var(--red)';
-        livePreviewBox.style.background = 'var(--red-bg)';
-        previewAdvice.style.color = '#991b1b';
-      } else if (prio === 'High') {
-        livePreviewBox.style.border = '1.5px solid var(--orange)';
-        livePreviewBox.style.background = 'var(--orange-bg)';
-        previewAdvice.style.color = '#9a3412';
-      } else {
-        livePreviewBox.style.border = '1.5px solid var(--gray-200)';
-        livePreviewBox.style.background = 'var(--gray-50)';
-        previewAdvice.style.color = 'var(--gray-900)';
+        lastRecommendation = res;
+        renderAIRecommendation(res, aiCard, catField, autoTag, userManuallyChangedCategory, submitBtn);
+      } catch (err) {
+        console.warn('Live recommendation notice:', err);
       }
-
-      previewAdvice.textContent = res.immediate_advice || 'Standard triage assigned.';
-      previewReason.textContent = res.priority_reason ? `Identified concern: ${res.priority_reason}` : '';
-    }, 250);
+    }, 350);
   };
 
-  titleField.addEventListener('input', updateLivePreview);
+  titleField.addEventListener('input', runLiveRecommendation);
+  locField.addEventListener('input', runLiveRecommendation);
   descField.addEventListener('input', () => {
     descCount.textContent = `${descField.value.length} / 2000 characters`;
-    updateLivePreview();
+    runLiveRecommendation();
   });
-  catField.addEventListener('change', updateLivePreview);
 
-  // File upload area
+  // File Upload Handlers
   uploadArea.addEventListener('click', () => fileInput.click());
   uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.style.borderColor = 'var(--primary)'; });
   uploadArea.addEventListener('dragleave', () => { uploadArea.style.borderColor = ''; });
   uploadArea.addEventListener('drop', (e) => {
     e.preventDefault();
     uploadArea.style.borderColor = '';
-    if (e.dataTransfer.files.length > 0) {
-      handleFile(e.dataTransfer.files[0]);
-    }
+    if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
   });
 
   fileInput.addEventListener('change', () => {
@@ -184,7 +191,6 @@ export async function loadSubmitForm() {
   function handleFile(file) {
     const errImg = document.getElementById('err-image');
     errImg.textContent = '';
-
     const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     if (!validTypes.includes(file.type)) {
       errImg.textContent = 'Invalid file type. Only JPG, PNG, GIF, WebP allowed.';
@@ -194,7 +200,6 @@ export async function loadSubmitForm() {
       errImg.textContent = 'File too large. Maximum 5 MB.';
       return;
     }
-
     selectedFile = file;
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -214,94 +219,171 @@ export async function loadSubmitForm() {
     reader.readAsDataURL(file);
   }
 
-  // Form reset
+  // Form Reset
   form.addEventListener('reset', () => {
     selectedFile = null;
+    userManuallyChangedCategory = false;
     preview.style.display = 'none';
     uploadArea.style.display = '';
-    if (livePreviewBox) livePreviewBox.style.display = 'none';
+    aiCard.style.display = 'none';
+    if (autoTag) autoTag.style.display = 'none';
+    if (submitBtn) submitBtn.disabled = false;
     document.querySelectorAll('.form-error').forEach(el => el.textContent = '');
     descCount.textContent = '0 / 2000 characters';
   });
 
-  // Form submit
+  // Submit Handler
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-
-    // Clear errors
     document.querySelectorAll('.form-error').forEach(el => el.textContent = '');
 
-    const name = document.getElementById('f-name').value.trim() || 'Anonymous';
-    const location = document.getElementById('f-location').value.trim();
+    const name = document.getElementById('f-name').value.trim() || 'Student';
+    const location = locField.value.trim();
     const room = document.getElementById('f-room').value.trim();
-    const title = document.getElementById('f-title').value.trim();
-    const desc = document.getElementById('f-desc').value.trim();
-    const category = document.getElementById('f-category').value;
+    const title = titleField.value.trim();
+    const desc = descField.value.trim();
+    let category = catField.value;
 
-    // Validate
-    let valid = true;
+    let hasError = false;
     if (location.length < 2) {
-      document.getElementById('err-location').textContent = 'Location is required (at least 2 characters).';
-      valid = false;
+      document.getElementById('err-location').textContent = 'Please specify building or area.';
+      hasError = true;
     }
-    if (title.length < 5) {
-      document.getElementById('err-title').textContent = 'Title must be at least 5 characters.';
-      valid = false;
+    if (title.length < 4) {
+      document.getElementById('err-title').textContent = 'Title must be at least 4 characters.';
+      hasError = true;
     }
-    if (desc.length < 10) {
-      document.getElementById('err-desc').textContent = 'Description must be at least 10 characters.';
-      valid = false;
+    if (desc.length < 8) {
+      document.getElementById('err-desc').textContent = 'Please provide more details (at least 8 characters).';
+      hasError = true;
+    }
+
+    if (!category && lastRecommendation && lastRecommendation.category) {
+      category = lastRecommendation.category;
     }
     if (!category) {
-      document.getElementById('err-category').textContent = 'Please select a category.';
-      valid = false;
+      category = 'Other Maintenance';
     }
 
-    if (!valid) return;
+    if (hasError) return;
 
-    const btn = document.getElementById('submitBtn');
-    btn.classList.add('btn-loading');
-    btn.disabled = true;
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Processing with AI...';
 
     try {
-      // Upload image first if selected
       let imagePath = null;
       if (selectedFile) {
-        try {
-          const uploadResult = await uploadImage(selectedFile);
-          imagePath = uploadResult.path;
-        } catch (uploadErr) {
-          showToast('Image upload failed: ' + uploadErr.message, 'warning');
-        }
+        submitBtn.textContent = 'Uploading photo...';
+        const upRes = await uploadImage(selectedFile);
+        if (upRes && upRes.path) imagePath = upRes.path;
       }
 
-      // Submit complaint
-      const result = await submitComplaint({
+      submitBtn.textContent = 'Analyzing and Filing...';
+      const newComplaint = await submitComplaint({
         student_name: name,
-        location: location,
+        location,
         room_number: room,
-        title: title,
+        title,
         description: desc,
-        category: category,
+        category,
         image_path: imagePath,
       });
 
-      showToast(`Complaint ${result.id} submitted successfully! Priority: ${result.priority}`, 'success', 6000);
+      showToast(`Complaint filed! Priority: ${newComplaint.priority || 'Logged'} (ID: ${newComplaint.id})`, 'success');
       form.reset();
-      selectedFile = null;
-      preview.style.display = 'none';
-      uploadArea.style.display = '';
-
-      // Show the AI analysis result
-      if (result.priority === 'Critical') {
-        showToast('⚠️ CRITICAL SAFETY HAZARD detected! Immediate attention required.', 'error', 8000);
-      }
-
+      window.location.hash = '#complaints';
     } catch (err) {
-      showToast('Submission failed: ' + err.message, 'error');
-    } finally {
-      btn.classList.remove('btn-loading');
-      btn.disabled = false;
+      submitBtn.disabled = false;
+      submitBtn.textContent = '🚀 Submit Complaint';
+      showToast(err.message || 'Submission failed. Please check the form.', 'error');
     }
   });
+}
+
+function renderAIRecommendation(res, card, catSelect, autoTag, userManuallyChanged, submitBtn) {
+  if (!res) {
+    card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'block';
+
+  // Scenario 1: Rejected Invalid Input (Chit-Chat, Food Order, Nonsense)
+  if (res.is_valid === false && !res.is_ambiguous) {
+    card.className = 'ai-recommendation-card ai-card-invalid';
+    card.innerHTML = `
+      <div class="ai-card-header">
+        <span class="ai-tag tag-danger">❌ Invalid Submission</span>
+      </div>
+      <p class="ai-msg-danger">${escapeHtml(res.validation_message || 'This does not appear to be a campus maintenance complaint.')}</p>
+      ${res.suggestion ? `<p class="ai-suggestion-text">💡 <strong>Tip:</strong> ${escapeHtml(res.suggestion)}</p>` : ''}
+    `;
+    if (submitBtn) submitBtn.disabled = true;
+    return;
+  }
+
+  // Scenario 2: Ambiguous Input (Needs more details)
+  if (res.is_ambiguous) {
+    card.className = 'ai-recommendation-card ai-card-ambiguous';
+    card.innerHTML = `
+      <div class="ai-card-header">
+        <span class="ai-tag tag-warning">ℹ️ Clarification Needed</span>
+      </div>
+      <p class="ai-msg-warning">${escapeHtml(res.validation_message || 'Your complaint is too vague.')}</p>
+      <p class="ai-clarification-prompt">👉 ${escapeHtml(res.clarification_prompt || 'Please specify exactly what appliance, fixture, or room area is affected.')}</p>
+    `;
+    if (submitBtn) submitBtn.disabled = false;
+    return;
+  }
+
+  // Scenario 3: Valid Legitimate Complaint
+  if (submitBtn) submitBtn.disabled = false;
+  const isP1 = res.is_critical || (res.priority && res.priority.includes('Critical'));
+  const prio = res.priority || 'P3 – Medium';
+
+  card.className = `ai-recommendation-card ${isP1 ? 'ai-card-critical' : 'ai-card-valid'}`;
+
+  // Automatically select category in dropdown if user hasn't overridden
+  if (!userManuallyChanged && res.category && catSelect) {
+    catSelect.value = res.category;
+    if (autoTag) {
+      autoTag.style.display = 'inline-block';
+      autoTag.textContent = `✨ Auto-Detected: ${res.category}`;
+    }
+  }
+
+  card.innerHTML = `
+    <div class="ai-card-header">
+      <div class="d-flex align-items-center gap-2">
+        <span class="ai-tag ${isP1 ? 'tag-danger' : 'tag-success'}">🤖 AI Recommendation</span>
+        <span class="ai-conf-badge">Confidence: ${(res.confidence * 100).toFixed(0)}%</span>
+        ${res.requires_manual_review ? `<span class="badge badge-warning" style="font-size:11px;">⚠️ Flagged for Review</span>` : ''}
+      </div>
+      <span class="priority-pill ${isP1 ? 'p1-pill' : ''}">${prio}</span>
+    </div>
+
+    <div class="ai-card-body">
+      <div class="rec-grid">
+        <div class="rec-item">
+          <small>Detected Category</small>
+          <strong>📁 ${escapeHtml(res.category || 'Other Maintenance')}</strong>
+        </div>
+        <div class="rec-item">
+          <small>Assigned Department</small>
+          <strong>🏢 ${escapeHtml(res.department || 'General Maintenance')}</strong>
+        </div>
+      </div>
+
+      <div class="rec-reason mt-8">
+        <p class="mb-4"><strong>Priority Reason:</strong> ${escapeHtml(res.priority_reason || 'Evaluated based on campus safety guidelines.')}</p>
+        ${res.suggested_action ? `<p class="mb-0 text-muted"><strong>Suggested Action:</strong> ${escapeHtml(res.suggested_action)}</p>` : ''}
+      </div>
+
+      ${res.safety_warning ? `
+        <div class="rec-safety-alert mt-8">
+          <span>⚠️ <strong>Safety Alert:</strong> ${escapeHtml(res.safety_warning)}</span>
+        </div>
+      ` : ''}
+    </div>
+  `;
 }

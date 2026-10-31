@@ -1,7 +1,7 @@
 """
 FixFirstAI - Configuration File
 ================================
-Central configuration for the backend server, database, file uploads, and AI service.
+Central configuration for backend, database, security, and AI classification.
 """
 
 import os
@@ -9,20 +9,21 @@ import os
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-# Base directory of the backend package
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# SQLite database file – stored right inside the backend folder
 DATABASE_PATH = os.path.join(BASE_DIR, "fixfirst.db")
-
-# Uploaded images folder
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 
 # ---------------------------------------------------------------------------
-# Server ports & Environment Overrides
+# Server Ports & Environment Overrides
 # ---------------------------------------------------------------------------
 BACKEND_PORT = int(os.getenv("PORT", os.getenv("BACKEND_PORT", 8001)))
 FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", 5174))
+
+# ---------------------------------------------------------------------------
+# Security & Authentication Settings
+# ---------------------------------------------------------------------------
+SECRET_KEY = os.getenv("SECRET_KEY", "fixfirst-ai-smart-campus-secret-key-2026-v2")
+TOKEN_EXPIRATION_MINUTES = int(os.getenv("TOKEN_EXPIRATION_MINUTES", 60 * 24))  # 24 hours
 
 # ---------------------------------------------------------------------------
 # AI Settings (Gemini, Ollama Cloud, Local Ollama)
@@ -51,18 +52,39 @@ MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
 ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp"]
 
 # ---------------------------------------------------------------------------
-# Complaint categories the front-end can choose from
+# Standard 10 Campus Maintenance Categories
 # ---------------------------------------------------------------------------
 CATEGORIES = [
-    "Electrical Safety",
-    "Water Leakage",
-    "Infrastructure",
-    "Emergency Exit",
-    "Drinking Water",
-    "Lighting",
-    "Hygiene",
+    "Electrical",
+    "Plumbing",
+    "Hygiene & Sanitation",
+    "Civil Infrastructure",
+    "Furniture",
     "Fire Safety",
-    "Pest Control",
     "Security",
-    "Other",
+    "IT & Networking",
+    "HVAC & Ventilation",
+    "Other Maintenance",
 ]
+
+# Priority definitions with standard campus codes
+PRIORITY_LEVELS = {
+    "P1 – Critical": {"code": "P1", "severity": "Critical", "sla_hours": 2},
+    "P2 – High": {"code": "P2", "severity": "High", "sla_hours": 8},
+    "P3 – Medium": {"code": "P3", "severity": "Medium", "sla_hours": 24},
+    "P4 – Low": {"code": "P4", "severity": "Low", "sla_hours": 72},
+}
+
+# Standard department mapping for categories
+CATEGORY_DEPARTMENTS = {
+    "Electrical": "Electrical Maintenance",
+    "Plumbing": "Plumbing & Sanitation Department",
+    "Hygiene & Sanitation": "Housekeeping & Hygiene Operations",
+    "Civil Infrastructure": "Estate & Civil Works",
+    "Furniture": "General Facilities & Carpentry",
+    "Fire Safety": "Fire & Safety Response Cell",
+    "Security": "Campus Security & Surveillance",
+    "IT & Networking": "IT & Campus Network Center",
+    "HVAC & Ventilation": "HVAC & Climate Control Division",
+    "Other Maintenance": "General Maintenance Services",
+}

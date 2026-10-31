@@ -1417,3 +1417,520 @@ tbody tr:nth-child(even):hover {
     width: 100%;
   }
 }
+
+
+/* ==========================================================================
+   SMART CAMPUS UPGRADE — Auth, Roles, AI Cards, Category, Ranking
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   Header Auth Chip
+   --------------------------------------------------------------------------- */
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 24px;
+  padding: 5px 12px 5px 6px;
+  cursor: pointer;
+  transition: box-shadow 0.2s, border-color 0.2s;
+  font-size: 13px;
+  user-select: none;
+}
+.user-chip:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--primary);
+}
+
+.user-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.role-badge-student {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.role-badge-staff {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.user-name {
+  font-weight: 600;
+  color: var(--gray-900);
+  font-size: 13px;
+}
+
+.switch-hint {
+  font-size: 11px;
+  color: var(--gray-400);
+}
+
+/* ---------------------------------------------------------------------------
+   Auth Modal
+   --------------------------------------------------------------------------- */
+
+.auth-modal-content {
+  max-width: 520px;
+}
+
+.auth-banner {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  color: white;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.auth-banner h4 {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: white;
+}
+.auth-banner p {
+  font-size: 12px;
+  opacity: 0.9;
+  margin: 0;
+}
+
+.demo-role-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.demo-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--gray-200);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.demo-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.demo-student { border-left: 4px solid #2563eb; background: #eff6ff; }
+.demo-staff   { border-left: 4px solid #15803d; background: #f0fdf4; }
+
+.demo-icon {
+  font-size: 26px;
+  flex-shrink: 0;
+}
+
+.demo-info {
+  flex: 1;
+}
+.demo-info strong {
+  display: block;
+  font-size: 13px;
+  color: var(--gray-900);
+}
+.demo-info small {
+  font-size: 12px;
+  color: var(--gray-500);
+}
+
+.demo-login-btn {
+  flex-shrink: 0;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--gray-400);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 16px 0;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--gray-200);
+}
+
+.custom-login-form .form-control {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius);
+  font-size: 14px;
+  color: var(--gray-900);
+  background: white;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+.custom-login-form .form-control:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+}
+.custom-login-form label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-700);
+  margin-bottom: 4px;
+}
+.custom-login-form .mb-2 { margin-bottom: 8px; }
+.custom-login-form .mb-3 { margin-bottom: 12px; }
+.w-100 { width: 100%; }
+
+/* ---------------------------------------------------------------------------
+   AI Recommendation Card (Submit Page)
+   --------------------------------------------------------------------------- */
+
+.ai-recommendation-card {
+  border-radius: 12px;
+  border: 1px solid var(--gray-200);
+  background: white;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.3s, box-shadow 0.3s;
+  margin-top: 16px;
+}
+
+.ai-card-invalid   { border-color: #fca5a5; background: #fef2f2; }
+.ai-card-ambiguous { border-color: #fcd34d; background: #fffbeb; }
+.ai-card-critical  { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.15); }
+.ai-card-valid     { border-color: #86efac; background: #f0fdf4; }
+
+.ai-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--gray-100);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.ai-card-body {
+  padding: 14px 16px;
+}
+
+.rec-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.rec-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rec-item strong {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gray-500);
+}
+
+.rec-reason {
+  font-size: 12px;
+  color: var(--gray-600);
+  line-height: 1.5;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--gray-50);
+  border-radius: 6px;
+}
+
+.rec-safety-alert {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.ai-tag {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.tag-danger  { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; }
+.tag-warning { background: #fffbeb; color: #d97706; border: 1px solid #fcd34d; }
+.tag-success { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+
+.ai-conf-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--gray-100);
+  color: var(--gray-600);
+}
+
+.badge-ai-auto {
+  display: inline-block;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.priority-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------------
+   Category Arranger (Staff)
+   --------------------------------------------------------------------------- */
+
+.category-arranger-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.category-tabs-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--gray-200);
+  padding-bottom: 6px;
+}
+
+.cat-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px 8px 0 0;
+  border: 1px solid var(--gray-200);
+  border-bottom: none;
+  background: var(--gray-50);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: -2px;
+}
+.cat-tab-btn:hover { background: white; color: var(--gray-900); }
+.cat-tab-btn.active {
+  background: white;
+  color: var(--primary);
+  border-color: var(--primary);
+  border-bottom: 2px solid white;
+}
+.cat-tab-btn.has-critical { border-top: 3px solid #ef4444; }
+
+.cat-tab-name { font-size: 12px; }
+.cat-tab-count {
+  background: var(--gray-200);
+  color: var(--gray-700);
+  border-radius: 12px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.cat-tab-crit {
+  background: #fef2f2;
+  color: #dc2626;
+  border-radius: 12px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.category-dept-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--gray-50);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  border: 1px solid var(--gray-200);
+}
+
+.dept-info { flex: 1; }
+.dept-info strong { font-size: 15px; color: var(--gray-900); display: block; }
+.dept-info small  { font-size: 12px; color: var(--gray-500); }
+
+.dept-metrics {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.metric-pill {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--gray-200);
+  color: var(--gray-700);
+}
+.metric-pill-danger  { background: #fef2f2; color: #dc2626; }
+.metric-pill-warning { background: #fff7ed; color: #c2410c; }
+
+.category-cards-queue {}
+
+.cards-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.complaint-card {
+  border-radius: 10px;
+  border: 1px solid var(--gray-200);
+  padding: 14px 16px;
+  background: white;
+  cursor: pointer;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+.complaint-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--primary);
+}
+.card-critical-glow {
+  border-color: #fca5a5;
+  box-shadow: 0 0 0 2px rgba(220,38,38,0.12);
+}
+
+.card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.urgency-rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--gray-200);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--gray-700);
+  flex-shrink: 0;
+}
+.urgency-rank-badge.rank-top { background: #fee2e2; color: #dc2626; }
+.urgency-rank-badge.rank-high { background: #ffedd5; color: #ea580c; }
+
+.priority-badge {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.p1-pill { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; }
+.p2-pill { background: #fff7ed; color: #ea580c; border: 1px solid #fdba74; }
+.p3-pill { background: #fffbeb; color: #d97706; border: 1px solid #fcd34d; }
+.p4-pill { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+
+.ranking-reason-box {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--gray-500);
+  padding: 6px 10px;
+  background: var(--gray-50);
+  border-radius: 6px;
+  border-left: 3px solid var(--gray-300);
+}
+
+/* ---------------------------------------------------------------------------
+   Ranked Queue
+   --------------------------------------------------------------------------- */
+
+.ranked-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ranked-card {
+  transition: box-shadow 0.2s;
+}
+.ranked-card:hover {
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Urgency rank badge in complaints list
+   --------------------------------------------------------------------------- */
+
+.urgency-score-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--gray-100);
+  color: var(--gray-600);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.urgency-score-chip.score-critical { background: #fef2f2; color: #dc2626; }
+.urgency-score-chip.score-high     { background: #fff7ed; color: #ea580c; }
+
+/* ---------------------------------------------------------------------------
+   Misc Utilities
+   --------------------------------------------------------------------------- */
+
+.mb-2  { margin-bottom: 8px; }
+.gap-8 { gap: 8px; }
+.flex-wrap { flex-wrap: wrap; }
