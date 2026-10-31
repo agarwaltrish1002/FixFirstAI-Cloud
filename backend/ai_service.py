@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 import httpx
 from google import genai
@@ -82,7 +84,7 @@ async def check_ollama_cloud_available() -> bool:
         return False
 
 
-async def get_ai_service_status() -> dict[str, Any]:
+async def get_ai_service_status() -> Dict[str, Any]:
     """Comprehensive status check for active and optional AI providers."""
     provider = os.getenv("AI_PROVIDER", "gemini").lower()
 
@@ -176,7 +178,7 @@ async def _analyze_with_ollama_cloud(
     title: str,
     description: str,
     category: str,
-) -> dict[str, Any] | None:
+) -> Optional[Dict[str, Any]]:
     """Analyze complaint using Ollama Cloud (https://ollama.com/api/chat)."""
     api_key = os.getenv("OLLAMA_API_KEY", OLLAMA_API_KEY)
     if not api_key:
@@ -229,7 +231,7 @@ async def _analyze_with_gemini(
     title: str,
     description: str,
     category: str,
-) -> dict[str, Any] | None:
+) -> Optional[Dict[str, Any]]:
     """Analyze maintenance/safety complaint with Gemini 2.5 Flash."""
     client = _get_gemini_client()
     if client is None:
@@ -262,12 +264,60 @@ async def _analyze_with_gemini(
         return None
 
 
+async def _analyze_with_ollama_local(
+    title: str,
+    description: str,
+    category: str,
+) -> Optional[Dict[str, Any]]:
+    """Analyze complaint using a local Ollama instance (e.g. localhost:11434)."""
+    try:
+        async with httpx.AsyncClient(timeout=_AI_TIMEOUT) as client:
+            prompt = _ANALYSIS_PROMPT_TEMPLATE.format(
+                title=title, description=description, category=category
+            )
+            resp = await client.post(
+                f"{OLLAMA_URL}/api/generate",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.2},
+                },
+            )
+            if resp.status_code == 200:
+                raw = resp.json().get("response", "")
+                return _parse_ai_response(raw, source=f"ollama_local:{OLLAMA_MODEL}")
+    except Exception as exc:
+        logger.error("Local Ollama analysis failed: %s", exc)
+    return None
+
+
 async def analyze_with_ai(
     title: str,
     description: str,
     category: str,
-) -> dict[str, Any] | None:
-    """Main dispatch routine for AI analysis with multi-tier fallback."""
+) -> Optional[Dict[str, Any]]:
+    """Main dispatch routine for AI complaint analysis across all providers.
+
+    Dispatches to Ollama Cloud, Google Gemini, or local Ollama depending on the
+    configured AI_PROVIDER environment variable, with automated multi-tier fallback.
+
+    Args:
+        title (str): Short title or summary of the campus maintenance issue.
+        description (str): Full description containing location and symptom details.
+        category (str): Pre-detected campus facility category.
+
+    Returns:
+        Optional[Dict[str, Any]]: Normalized analysis dictionary containing:
+            - suggested_priority (str): Priority classification (P1 to P4).
+            - detected_category (str): Validated campus facility category.
+            - recommended_department (str): Assigned campus maintenance team.
+            - confidence_score (float): Confidence score between 0.0 and 1.0.
+            - reasoning (str): AI rationale for priority and category.
+            - risk_indicators (list[str]): Detected hazard tags.
+            - requires_manual_review (bool): True if confidence is low.
+            Returns None if all configured AI providers fail.
+    """
     provider = os.getenv("AI_PROVIDER", "gemini").lower()
     result = None
 
@@ -281,25 +331,7 @@ async def analyze_with_ai(
         result = await _analyze_with_gemini(title, description, category)
 
     elif provider == "ollama_local":
-        try:
-            async with httpx.AsyncClient(timeout=_AI_TIMEOUT) as client:
-                prompt = _ANALYSIS_PROMPT_TEMPLATE.format(
-                    title=title, description=description, category=category
-                )
-                resp = await client.post(
-                    f"{OLLAMA_URL}/api/generate",
-                    json={
-                        "model": OLLAMA_MODEL,
-                        "prompt": prompt,
-                        "stream": False,
-                        "options": {"temperature": 0.2},
-                    },
-                )
-                if resp.status_code == 200:
-                    raw = resp.json().get("response", "")
-                    result = _parse_ai_response(raw, source=f"ollama_local:{OLLAMA_MODEL}")
-        except Exception as exc:
-            logger.error("Local Ollama analysis failed: %s", exc)
+        result = await _analyze_with_ollama_local(title, description, category)
 
     else:
         result = await _analyze_with_gemini(title, description, category)
@@ -307,7 +339,7 @@ async def analyze_with_ai(
     return result
 
 
-def _parse_ai_response(raw: str, source: str = "ai") -> dict[str, Any] | None:
+def _parse_ai_response(raw: str, source: str = "ai") -> Optional[Dict[str, Any]]:
     """Parse and validate the AI's JSON response with robust defaults."""
     text = raw.strip()
 
@@ -382,7 +414,7 @@ def get_fallback_analysis(
     description: str,
     category: str,
     rule_result: dict[str, Any],
-) -> dict[str, Any]:
+) -> Dict[str, Any]:
     """Build an AI-style response from the deterministic safety rule engine."""
     canonical_pri = normalize_priority_string(rule_result.get("priority", "P3 – Medium"))
     norm_cat = CATEGORY_NORMALIZE.get(

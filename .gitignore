@@ -64,3 +64,6 @@ graphify_output/
 
 frontend/.env.development
 backend/*.db.backup
+
+graphify-out/
+backend/graphify-out/
