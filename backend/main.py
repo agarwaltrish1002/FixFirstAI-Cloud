@@ -314,11 +314,16 @@ def _row_to_dict(row) -> dict[str, Any]:
 
 @app.get("/api/health")
 async def health_check():
-    """Basic health check — also reports Ollama availability."""
-    ollama_ok = await check_ollama_available()
+    """Health check endpoint reporting dual AI and Safety Engine statuses."""
+    ai_stat = await get_ai_service_status()
     return {
         "status": "healthy",
-        "ollama_available": ollama_ok,
+        "ai_status": ai_stat["ai_status"],
+        "safety_engine_status": ai_stat["safety_engine_status"],
+        "ai_ready": ai_stat["ai_ready"],
+        "provider": ai_stat["provider"],
+        "model": ai_stat["model_name"],
+        "ai_error": ai_stat.get("ai_error"),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -508,6 +513,8 @@ async def recommend_complaint(data: RecommendRequest):
         "is_ambiguous": val.get("is_ambiguous", False),
         "clarification_prompt": val.get("clarification_prompt"),
         "validation_message": val["message"],
+        "is_ai_generated": bool(ai_res),
+        "source": ai_res.get("source", "openai") if ai_res else "rule-engine-safety",
         "category": final_category,
         "priority": final_priority,
         "priority_reason": priority_reason,
@@ -604,6 +611,7 @@ async def list_ranked_complaints(
         return {
             "total_ranked": len(ranked),
             "ranked_complaints": ranked,
+            "complaints": ranked,
         }
     finally:
         conn.close()
@@ -627,12 +635,16 @@ async def list_complaints_by_category():
             matching = [c for c in all_complaints if c.get("category") == cat]
             crit_count = sum(1 for c in matching if "Critical" in str(c.get("priority")) or "P1" in str(c.get("priority")))
             pend_count = sum(1 for c in matching if c.get("status") == "Pending")
+            active_count = sum(1 for c in matching if c.get("status") != "Resolved")
+            resolved_count = sum(1 for c in matching if c.get("status") == "Resolved")
             matching.sort(key=lambda x: x.get("ranking_score") or 0.0, reverse=True)
 
             categories_data.append({
                 "category": cat,
                 "department": CATEGORY_DEPARTMENTS.get(cat, "General Maintenance Services"),
                 "total_complaints": len(matching),
+                "active_complaints": active_count,
+                "resolved_complaints": resolved_count,
                 "critical_complaints": crit_count,
                 "pending_complaints": pend_count,
                 "complaints": matching,

@@ -352,10 +352,14 @@ function renderAIRecommendation(res, card, catSelect, autoTag, userManuallyChang
     }
   }
 
+  const isRule = !res.is_ai_generated || res.source === 'rule-engine-safety' || res.source === 'rule-engine-fallback';
+  const tagText = isRule ? '🛡️ Safety Engine (Rule-Based)' : '🤖 AI Recommendation';
+  const tagBadgeClass = isRule ? 'tag-warning' : (isP1 ? 'tag-danger' : 'tag-success');
+
   card.innerHTML = `
     <div class="ai-card-header">
       <div class="d-flex align-items-center gap-2">
-        <span class="ai-tag ${isP1 ? 'tag-danger' : 'tag-success'}">🤖 AI Recommendation</span>
+        <span class="ai-tag ${tagBadgeClass}">${tagText}</span>
         <span class="ai-conf-badge">Confidence: ${(res.confidence * 100).toFixed(0)}%</span>
         ${res.requires_manual_review ? `<span class="badge badge-warning" style="font-size:11px;">⚠️ Flagged for Review</span>` : ''}
       </div>

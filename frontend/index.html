@@ -200,8 +200,20 @@
           </div>
         </div>
         <div class="header-right">
-          <span class="connection-dot" id="connectionDot" title="Backend status"></span>
-          <span class="connection-label" id="connectionLabel">Checking...</span>
+          <!-- Dual Status Indicators: AI & Safety Engine -->
+          <div class="dual-status-group" id="dualStatusGroup">
+            <span class="status-pill status-pill-ai" id="aiStatusPill" title="AI Provider Status">
+              <span class="dot-indicator dot-yellow" id="aiDot"></span>
+              <span id="aiLabel">AI: Checking</span>
+            </span>
+            <span class="status-pill status-pill-safety" id="safetyStatusPill" title="Campus Safety Engine">
+              <span class="dot-indicator dot-green" id="safetyDot"></span>
+              <span id="safetyLabel">Safety: Active</span>
+            </span>
+          </div>
+          <!-- Legacy fallback indicators if referenced by older scripts -->
+          <span class="connection-dot" id="connectionDot" style="display:none;"></span>
+          <span class="connection-label" id="connectionLabel" style="display:none;"></span>
           <!-- Notification bell -->
           <div class="notif-bell-wrapper" id="notifBellWrapper" style="display:none;">
             <button class="notif-bell" id="notifBell" aria-label="Notifications">

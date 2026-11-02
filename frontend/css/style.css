@@ -4,28 +4,36 @@
 
 /* ---------- CSS Variables ---------- */
 :root {
-  --primary: #16a34a;
-  --primary-dark: #15803d;
-  --primary-light: #22c55e;
-  --primary-bg: #f0fdf4;
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light: #3b82f6;
+  --primary-bg: #eff6ff;
+  --navy-950: #0a0f1d;
+  --navy-900: #0f172a;
+  --navy-800: #1e293b;
+  --navy-700: #334155;
   --white: #ffffff;
-  --gray-50: #f9fafb;
-  --gray-100: #f3f4f6;
-  --gray-200: #e5e7eb;
-  --gray-300: #d1d5db;
-  --gray-500: #6b7280;
-  --gray-700: #374151;
-  --gray-900: #111827;
+  --gray-50: #f8fafc;
+  --gray-100: #f1f5f9;
+  --gray-200: #e2e8f0;
+  --gray-300: #cbd5e1;
+  --gray-500: #64748b;
+  --gray-700: #334155;
+  --gray-900: #0f172a;
   --red: #dc2626;
   --red-bg: #fef2f2;
   --orange: #ea580c;
   --orange-bg: #fff7ed;
-  --yellow: #ca8a04;
+  --yellow: #d97706;
   --yellow-bg: #fefce8;
   --blue: #2563eb;
   --blue-bg: #eff6ff;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --green: #16a34a;
+  --green-bg: #f0fdf4;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.08);
   --radius: 8px;
   --radius-lg: 12px;
 
@@ -81,12 +89,13 @@ h1, h2, h3, h4, h5, h6 {
   left: 0;
   width: var(--sidebar-width);
   height: 100vh;
-  background: var(--primary-dark);
+  background: var(--navy-900);
   color: var(--white);
   display: flex;
   flex-direction: column;
   z-index: 100;
   transition: transform 0.3s ease;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .sidebar-header {
@@ -140,9 +149,10 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .nav-item.active {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--navy-800);
   color: var(--white);
-  border-left-color: var(--white);
+  border-left-color: #3b82f6;
+  font-weight: 600;
 }
 
 .nav-icon {
@@ -230,6 +240,63 @@ h1, h2, h3, h4, h5, h6 {
 
 .connection-dot.disconnected {
   background: var(--red);
+}
+
+/* ---------- Dual Separate Status Indicators (AI + Safety Engine) ---------- */
+.dual-status-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  color: var(--gray-700);
+  cursor: default;
+  transition: all 0.2s ease;
+}
+
+.status-pill-ai {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.status-pill-safety {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.dot-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.dot-indicator.dot-green {
+  background: #16a34a;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.2);
+}
+
+.dot-indicator.dot-yellow {
+  background: #eab308;
+  box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.2);
+}
+
+.dot-indicator.dot-red {
+  background: #dc2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
 }
 
 .hamburger {

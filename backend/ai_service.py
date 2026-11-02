@@ -405,6 +405,37 @@ async def _analyze_with_ollama_local(
 # Provider Status Check
 # ---------------------------------------------------------------------------
 
+async def check_openai_available() -> tuple[bool, Optional[str]]:
+    """
+    Actively tests OpenAI API connectivity and authentication.
+    Returns (is_connected, error_message).
+    Uses a strict 4.0s timeout to never stall the server.
+    """
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key:
+        return False, "OPENAI_API_KEY is not set in environment."
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.get("https://api.openai.com/v1/models", headers=headers)
+            if resp.status_code == 200:
+                return True, None
+            elif resp.status_code == 401:
+                return False, "Invalid OpenAI API Key (Authentication Failed 401)."
+            elif resp.status_code == 429:
+                return False, "OpenAI Quota Exceeded or Rate Limited (429)."
+            else:
+                return False, f"OpenAI returned HTTP {resp.status_code}."
+    except httpx.TimeoutException:
+        return False, "OpenAI API connection timed out (>4s)."
+    except Exception as e:
+        return False, f"OpenAI network error: {type(e).__name__}"
+
+
 async def get_ai_service_status() -> Dict[str, Any]:
     """Comprehensive status check for active and optional AI providers."""
     provider = os.getenv("AI_PROVIDER", AI_PROVIDER).lower()
@@ -420,41 +451,72 @@ async def get_ai_service_status() -> Dict[str, Any]:
     ai_ready = False
     model_name = ""
 
+    ai_status = "Disconnected"
+    ai_error = None
+
     if provider == "openai":
         model_name = os.getenv("OPENAI_MODEL", "gpt-4.1")
         credentials_configured = openai_configured
-        connectivity_verified = credentials_configured
-        ai_ready = credentials_configured
+        if credentials_configured:
+            ok, err = await check_openai_available()
+            connectivity_verified = ok
+            ai_ready = ok
+            if ok:
+                ai_status = "Connected"
+            else:
+                ai_status = "Error"
+                ai_error = err
+        else:
+            ai_status = "Disconnected"
+            ai_error = "OPENAI_API_KEY not configured."
+
     elif provider == "ollama_cloud":
         model_name = os.getenv("OLLAMA_MODEL", OLLAMA_MODEL)
         credentials_configured = bool(os.getenv("OLLAMA_API_KEY", OLLAMA_API_KEY))
         if credentials_configured:
             connectivity_verified = await check_ollama_cloud_available()
-        ai_ready = connectivity_verified
+            ai_ready = connectivity_verified
+            ai_status = "Connected" if connectivity_verified else "Error"
+        else:
+            ai_status = "Disconnected"
+
     elif provider == "gemini":
         model_name = os.getenv("GEMINI_MODEL", GEMINI_MODEL)
         credentials_configured = gemini_configured
         connectivity_verified = credentials_configured
         ai_ready = credentials_configured
+        ai_status = "Connected" if credentials_configured else "Disconnected"
+
     elif provider == "ollama_local":
         model_name = os.getenv("OLLAMA_MODEL", OLLAMA_MODEL)
         credentials_configured = True
         connectivity_verified = local_ollama_ok
         ai_ready = local_ollama_ok and local_model_ok
+        ai_status = "Connected" if ai_ready else "Disconnected"
+
     else:
-        # Default fallback: try OpenAI, then Gemini
-        model_name = os.getenv("OPENAI_MODEL", "gpt-4.1") if openai_configured else os.getenv("GEMINI_MODEL", GEMINI_MODEL)
-        credentials_configured = openai_configured or gemini_configured
-        connectivity_verified = credentials_configured
-        ai_ready = credentials_configured
+        # Default: check OpenAI first
+        model_name = os.getenv("OPENAI_MODEL", "gpt-4.1")
+        credentials_configured = openai_configured
+        if credentials_configured:
+            ok, err = await check_openai_available()
+            connectivity_verified = ok
+            ai_ready = ok
+            ai_status = "Connected" if ok else "Error"
+            ai_error = err
+        else:
+            ai_status = "Disconnected"
 
     return {
         "provider": provider,
         "model_name": model_name,
         "configured_model": model_name,
+        "ai_status": ai_status,  # "Connected" | "Disconnected" | "Error"
+        "safety_engine_status": "Active",  # Deterministic Safety Engine is ALWAYS Active
+        "ai_ready": ai_ready,
+        "ai_error": ai_error,
         "credentials_configured": credentials_configured,
         "connectivity_verified": connectivity_verified,
-        "ai_ready": ai_ready,
         "openai_configured": openai_configured,
         "gemini_configured": gemini_configured,
         "ollama_available": local_ollama_ok,

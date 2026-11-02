@@ -242,21 +242,63 @@ function updateSidebarForRole() {
 }
 
 // ---------------------------------------------------------------------------
-// Backend connection check
+// Backend & AI connection check (Dual Status Indicators)
 // ---------------------------------------------------------------------------
 
 async function checkConnection() {
   const dot = document.getElementById('connectionDot');
   const label = document.getElementById('connectionLabel');
-  if (!dot || !label) return;
+
+  const aiPill = document.getElementById('aiStatusPill');
+  const aiDot = document.getElementById('aiDot');
+  const aiLabel = document.getElementById('aiLabel');
+
+  const safetyPill = document.getElementById('safetyStatusPill');
+  const safetyDot = document.getElementById('safetyDot');
+  const safetyLabel = document.getElementById('safetyLabel');
 
   const health = await getHealthCheck();
+
   if (health) {
-    dot.className = 'connection-dot connected';
-    label.textContent = health.ai_ready ? 'AI Connected' : 'Backend OK';
+    if (dot) dot.className = 'connection-dot connected';
+    if (label) label.textContent = 'Connected';
+
+    const aiStatus = health.ai_status || (health.ai_ready ? 'Connected' : 'Disconnected');
+    const safetyStatus = health.safety_engine_status || 'Active';
+
+    if (aiLabel && aiDot) {
+      if (aiStatus === 'Connected') {
+        aiDot.className = 'dot-indicator dot-green';
+        aiLabel.textContent = `AI: Connected`;
+        aiPill?.setAttribute('title', `AI Inference: Connected (${health.model || 'OpenAI'})`);
+      } else if (aiStatus === 'Error') {
+        aiDot.className = 'dot-indicator dot-red';
+        aiLabel.textContent = `AI: Error`;
+        aiPill?.setAttribute('title', health.ai_error || 'OpenAI API Error');
+      } else {
+        aiDot.className = 'dot-indicator dot-yellow';
+        aiLabel.textContent = `AI: Disconnected`;
+        aiPill?.setAttribute('title', 'AI is disconnected; full campus protection is handled by deterministic Safety Engine.');
+      }
+    }
+
+    if (safetyLabel && safetyDot) {
+      safetyDot.className = 'dot-indicator dot-green';
+      safetyLabel.textContent = `Safety: ${safetyStatus}`;
+      safetyPill?.setAttribute('title', 'Campus Safety Engine is active with life-safety overrides.');
+    }
   } else {
-    dot.className = 'connection-dot disconnected';
-    label.textContent = 'Disconnected';
+    if (dot) dot.className = 'connection-dot disconnected';
+    if (label) label.textContent = 'Disconnected';
+
+    if (aiDot && aiLabel) {
+      aiDot.className = 'dot-indicator dot-red';
+      aiLabel.textContent = 'Backend Offline';
+    }
+    if (safetyDot && safetyLabel) {
+      safetyDot.className = 'dot-indicator dot-red';
+      safetyLabel.textContent = 'Safety: Offline';
+    }
   }
 }
 

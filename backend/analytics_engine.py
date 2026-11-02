@@ -216,7 +216,19 @@ def compute_campus_risk_intelligence(conn: sqlite3.Connection) -> dict[str, Any]
             
     sla_compliance_rate = int(round((sla_met_count / max(1, total_tickets)) * 100)) if total_tickets > 0 else 100
 
+    crit_total = sum(1 for c in complaints if "Critical" in str(c["priority"]) or "P1" in str(c["priority"]))
+    high_total = sum(1 for c in complaints if "High" in str(c["priority"]) or "P2" in str(c["priority"]))
+    med_total = sum(1 for c in complaints if "Medium" in str(c["priority"]) or "P3" in str(c["priority"]))
+    low_total = sum(1 for c in complaints if "Low" in str(c["priority"]) or "P4" in str(c["priority"]))
+
     return {
+        "priority_distribution": {
+            "Critical": crit_total,
+            "High": high_total,
+            "Medium": med_total,
+            "Low": low_total,
+            "total": len(complaints),
+        },
         "campus_health_score": campus_health,
         "campus_health_tier": "Good Standing" if campus_health >= 80 else ("Watchlist" if campus_health >= 65 else "Immediate Intervention Required"),
         "active_critical_hazards": active_critical,

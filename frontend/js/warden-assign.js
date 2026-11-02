@@ -11,6 +11,7 @@
 
 import {
   getComplaints,
+  getComplaint,
   getWorkers,
   assignWorker,
   verifyRepair,
@@ -372,10 +373,23 @@ async function renderVerificationQueue() {
 }
 
 // ---------------------------------------------------------------------------
-// Assignment Modal
+// Assignment Modal (Professionally Redesigned with Rich Details & Validation)
 // ---------------------------------------------------------------------------
 
 window.openAssignModal = async (complaintId, title, category) => {
+  let complaintData = null;
+  try {
+    complaintData = await getComplaint(complaintId);
+  } catch (e) {
+    complaintData = null;
+  }
+
+  const issueTitle = complaintData?.title || title || 'Maintenance Task';
+  const issueCat = complaintData?.category || category || 'General Maintenance';
+  const issueLoc = complaintData?.location || 'Campus Facility';
+  const issueRoom = complaintData?.room_number ? ` (Room ${complaintData.room_number})` : '';
+  const issuePrio = complaintData?.priority || 'Medium';
+
   if (!cachedWorkers.length) {
     try {
       const res = await getWorkers();
@@ -383,53 +397,145 @@ window.openAssignModal = async (complaintId, title, category) => {
     } catch { cachedWorkers = []; }
   }
 
-  // Filter or highlight recommended workers by department matching category
-  const workerOptions = cachedWorkers.map(w => {
-    return `<option value="${w.id}">${escapeHtml(w.name)} — ${escapeHtml(w.department)} (${escapeHtml(w.assigned_area || 'Campus-wide')}) [Active jobs: ${w.active_jobs_count || 0}]</option>`;
+  // Group / Sort workers so matching specialists appear at the top
+  const catKeywords = issueCat.toLowerCase().split(/[ &,/]+/);
+  const sortedWorkers = [...cachedWorkers].sort((a, b) => {
+    const aMatch = catKeywords.some(k => k.length > 2 && ((a.department || '').toLowerCase().includes(k) || (a.specialization || '').toLowerCase().includes(k)));
+    const bMatch = catKeywords.some(k => k.length > 2 && ((b.department || '').toLowerCase().includes(k) || (b.specialization || '').toLowerCase().includes(k)));
+    if (aMatch && !bMatch) return -1;
+    if (!aMatch && bMatch) return 1;
+    return (a.active_jobs_count || 0) - (b.active_jobs_count || 0);
+  });
+
+  const workerOptions = sortedWorkers.map(w => {
+    const isRecommended = catKeywords.some(k => k.length > 2 && ((w.department || '').toLowerCase().includes(k) || (w.specialization || '').toLowerCase().includes(k)));
+    const loadCount = w.active_jobs_count || 0;
+    const statusTag = loadCount === 0 ? '🟢 Available now' : `🟡 ${loadCount} active job${loadCount > 1 ? 's' : ''}`;
+    const recLabel = isRecommended ? '✨ [RECOMMENDED MATCH] ' : '';
+    return `<option value="${w.id}">
+      ${recLabel}${escapeHtml(w.name)} — ${escapeHtml(w.department)} | ${statusTag} (${escapeHtml(w.assigned_area || 'Campus-wide')})
+    </option>`;
   }).join('');
 
-  openModal(`Assign Worker: ${complaintId}`, `
-    <div style="font-size:13px;color:var(--gray-700);margin-bottom:14px;">
-      <strong>Issue:</strong> ${escapeHtml(title)}<br/>
-      <strong>Category:</strong> ${escapeHtml(category)}
+  const modalBody = `
+    <!-- Complaint Preview Card -->
+    <div class="card mb-16" style="background:#f8fafc;border:1px solid #cbd5e1;padding:14px 16px;border-radius:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <div class="flex items-center gap-6">
+          <span style="font-size:11px;font-family:monospace;font-weight:700;background:#e2e8f0;padding:2px 8px;border-radius:4px;color:#334155;">${escapeHtml(complaintId)}</span>
+          ${priorityBadge(issuePrio)}
+        </div>
+        <span style="font-size:12px;font-weight:600;background:#e0f2fe;color:#0369a1;padding:2px 10px;border-radius:6px;">
+          📁 ${escapeHtml(issueCat)}
+        </span>
+      </div>
+      <h4 style="font-size:15px;font-weight:700;color:#0f172a;margin:0 0 6px;line-height:1.3;">${escapeHtml(issueTitle)}</h4>
+      <p style="font-size:12px;color:#64748b;margin:0;">
+        📍 <strong>Location:</strong> ${escapeHtml(issueLoc)}${escapeHtml(issueRoom)}
+      </p>
     </div>
-    <form id="assignWorkerForm">
-      <div class="form-group">
-        <label class="form-label">Select Maintenance Worker <span style="color:red">*</span></label>
-        <select id="assignWorkerSelect" class="form-control" required>
-          <option value="">Choose technician…</option>
+
+    <form id="assignWorkerForm" onsubmit="event.preventDefault(); window._submitWorkerAssignment('${complaintId}');">
+      <!-- Worker Selection -->
+      <div class="form-group mb-16">
+        <label class="form-label" style="font-weight:700;font-size:13px;color:#1e293b;display:flex;justify-content:space-between;align-items:center;">
+          <span>👷 Select Maintenance Worker <span style="color:#dc2626;">*</span></span>
+          <span style="font-size:11px;font-weight:500;color:#64748b;">Specialists prioritized</span>
+        </label>
+        <select id="assignWorkerSelect" class="form-control" style="font-size:13px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;background:white;width:100%;" required>
+          <option value="">-- Choose technician to dispatch --</option>
           ${workerOptions}
         </select>
+        <small class="form-hint" style="font-size:11px;color:#64748b;margin-top:4px;display:block;">
+          Technicians matching the complaint category are recommended at the top.
+        </small>
       </div>
-      <div class="form-group">
-        <label class="form-label">Special Instructions for Worker (optional)</label>
-        <textarea id="assignInstructions" class="form-control" rows="3" placeholder="e.g. Ensure PPE is worn. Check circuit breaker before touching switchboard. Contact warden upon arrival."></textarea>
+
+      <!-- Special Instructions with Live Counter -->
+      <div class="form-group mb-16">
+        <label class="form-label" style="font-weight:700;font-size:13px;color:#1e293b;display:flex;justify-content:space-between;align-items:center;">
+          <span>📋 Special Instructions for Worker</span>
+          <span id="assignCharCount" style="font-size:11px;font-weight:600;color:#64748b;">0 / 600</span>
+        </label>
+        <textarea
+          id="assignInstructions"
+          class="form-control"
+          rows="4"
+          maxlength="600"
+          placeholder="Add specific repair instructions, safety precautions, required materials or access information for the assigned worker..."
+          style="width:100%;font-size:13px;line-height:1.5;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;resize:vertical;min-height:90px;font-family:inherit;"
+        ></textarea>
+        <small style="font-size:11px;color:#64748b;margin-top:4px;display:block;">
+          Specify equipment needed, PPE precautions, keys, or warden check-in steps.
+        </small>
       </div>
-      <div id="assignError" class="alert alert-danger" style="display:none;font-size:13px;"></div>
+
+      <div id="assignError" class="alert alert-danger" style="display:none;font-size:12px;padding:8px 12px;margin-bottom:12px;"></div>
     </form>
-  `, `
+  `;
+
+  const modalFooter = `
     <button class="btn btn-secondary" onclick="window.closeModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="window._submitWorkerAssignment('${complaintId}')">Confirm Assignment</button>
-  `);
+    <button class="btn btn-primary" id="confirmAssignBtn" onclick="window._submitWorkerAssignment('${complaintId}')" style="font-weight:600;gap:8px;">
+      <span>🚀</span> Assign Technician
+    </button>
+  `;
+
+  openModal(`Dispatch Technician: ${complaintId}`, modalBody, modalFooter);
+
+  // Wire character counter
+  setTimeout(() => {
+    const textarea = document.getElementById('assignInstructions');
+    const counter = document.getElementById('assignCharCount');
+    if (textarea && counter) {
+      textarea.addEventListener('input', () => {
+        const len = textarea.value.length;
+        counter.textContent = `${len} / 600`;
+        counter.style.color = len >= 550 ? '#dc2626' : '#64748b';
+      });
+    }
+  }, 50);
 };
 
 window._submitWorkerAssignment = async (complaintId) => {
-  const workerId = document.getElementById('assignWorkerSelect')?.value;
+  const workerSelect = document.getElementById('assignWorkerSelect');
+  const workerId = workerSelect?.value;
   const instructions = document.getElementById('assignInstructions')?.value?.trim() || '';
   const errBox = document.getElementById('assignError');
+  const submitBtn = document.getElementById('confirmAssignBtn');
 
   if (!workerId) {
-    if (errBox) { errBox.textContent = 'Please select a worker.'; errBox.style.display = 'block'; }
+    if (errBox) {
+      errBox.textContent = 'Please choose a maintenance worker from the dropdown.';
+      errBox.style.display = 'block';
+    }
+    workerSelect?.focus();
     return;
+  }
+
+  const selectedOptionText = workerSelect.options[workerSelect.selectedIndex]?.text || '';
+  const workerName = selectedOptionText.split('—')[0]?.replace('✨ [RECOMMENDED MATCH]', '')?.trim() || 'Technician';
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>⏳</span> Assigning...';
   }
 
   try {
     await assignWorker(complaintId, workerId, instructions);
     closeModal();
-    showToast(`✅ Complaint ${complaintId} assigned to technician successfully!`, 'success');
-    await renderUnassignedQueue();
+    showToast(`✅ Complaint ${complaintId} successfully assigned to ${workerName}!`, 'success');
+    if (typeof renderUnassignedQueue === 'function') await renderUnassignedQueue();
+    if (typeof renderCriticalAlerts === 'function') await renderCriticalAlerts();
   } catch (err) {
-    if (errBox) { errBox.textContent = err.message || 'Failed to assign worker.'; errBox.style.display = 'block'; }
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span>🚀</span> Assign Technician';
+    }
+    if (errBox) {
+      errBox.textContent = err.message || 'Failed to assign worker.';
+      errBox.style.display = 'block';
+    }
   }
 };
 
