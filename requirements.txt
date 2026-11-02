@@ -7,3 +7,5 @@ httpx
 python-multipart
 pydantic
 google-genai
+argon2-cffi
+openai

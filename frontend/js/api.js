@@ -1,13 +1,13 @@
 /**
- * FixFirst AI — API Service
- * ==========================
- * All communication with the FastAPI backend happens through this module.
- * Dynamically picks up environment configuration for development vs production.
+ * FixFirst AI — API Service Layer
+ * =================================
+ * All backend communication goes through this module.
+ * API keys are NEVER stored here — they remain on the backend server.
  */
 
-const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE_URL)
-? import.meta.env.VITE_API_BASE_URL
-: 'https://fixfirstai-cloud.onrender.com';
+export const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE_URL)
+  ? import.meta.env.VITE_API_BASE_URL
+  : 'https://fixfirstai-cloud.onrender.com';
 
 
 // ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ async function apiRequest(endpoint, options = {}) {
     defaults.headers['Authorization'] = `Bearer ${token}`;
   }
 
-  // Merge headers (don't override Content-Type for FormData)
+  // Don't set Content-Type for FormData (browser sets multipart boundary)
   if (options.body instanceof FormData) {
     delete defaults.headers['Content-Type'];
   }
@@ -53,51 +53,77 @@ async function apiRequest(endpoint, options = {}) {
   }
 }
 
+
 // ---------------------------------------------------------------------------
-// API Functions
+// Auth
 // ---------------------------------------------------------------------------
 
-/** Dashboard statistics */
-export async function getStats() {
-  try {
-    return await apiRequest('/api/stats');
-  } catch (e) {
-    console.error('getStats error:', e);
-    return null;
-  }
+/** Login with username, password, and role portal */
+export async function loginUser(username, password, role = null) {
+  const body = { username, password };
+  if (role) body.role = role;
+  return await apiRequest('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 }
 
-/** List complaints with optional filters */
+/** Get current user profile */
+export async function getMyProfile() {
+  try { return await apiRequest('/api/auth/me'); } catch (e) { return null; }
+}
+
+/** Get demo accounts list */
+export async function getDemoUsers() {
+  try { return await apiRequest('/api/auth/demo-users'); } catch (e) { return null; }
+}
+
+
+// ---------------------------------------------------------------------------
+// Dashboard & Stats
+// ---------------------------------------------------------------------------
+
+export async function getStats() {
+  try { return await apiRequest('/api/stats'); } catch (e) { return null; }
+}
+
+export async function getHealthCheck() {
+  try { return await apiRequest('/api/health'); } catch (e) { return null; }
+}
+
+export async function getAIStatus() {
+  try { return await apiRequest('/api/ai/status'); } catch (e) { return null; }
+}
+
+export async function getCategories() {
+  try { return await apiRequest('/api/categories'); } catch (e) { return null; }
+}
+
+
+// ---------------------------------------------------------------------------
+// Complaints
+// ---------------------------------------------------------------------------
+
 export async function getComplaints(filters = {}) {
   try {
     const params = new URLSearchParams();
-    if (filters.status) params.set('status', filters.status);
+    if (filters.status)   params.set('status', filters.status);
     if (filters.priority) params.set('priority', filters.priority);
     if (filters.category) params.set('category', filters.category);
-    if (filters.search) params.set('search', filters.search);
-    if (filters.sort_by) params.set('sort_by', filters.sort_by);
-    if (filters.order) params.set('order', filters.order);
-    if (filters.page) params.set('page', filters.page);
+    if (filters.search)   params.set('search', filters.search);
+    if (filters.sort_by)  params.set('sort_by', filters.sort_by);
+    if (filters.order)    params.set('order', filters.order);
+    if (filters.page)     params.set('page', filters.page);
     if (filters.per_page) params.set('per_page', filters.per_page);
     const qs = params.toString();
     return await apiRequest(`/api/complaints${qs ? '?' + qs : ''}`);
-  } catch (e) {
-    console.error('getComplaints error:', e);
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
-/** Get a single complaint */
 export async function getComplaint(id) {
-  try {
-    return await apiRequest(`/api/complaints/${id}`);
-  } catch (e) {
-    console.error('getComplaint error:', e);
-    return null;
-  }
+  try { return await apiRequest(`/api/complaints/${id}`); } catch (e) { return null; }
 }
 
-/** Submit a new complaint */
 export async function submitComplaint(payload) {
   return await apiRequest('/api/complaints', {
     method: 'POST',
@@ -105,7 +131,6 @@ export async function submitComplaint(payload) {
   });
 }
 
-/** Update complaint status */
 export async function updateComplaintStatus(id, status) {
   return await apiRequest(`/api/complaints/${id}/status`, {
     method: 'PUT',
@@ -113,34 +138,72 @@ export async function updateComplaintStatus(id, status) {
   });
 }
 
-/** Re-analyze a complaint with AI */
 export async function analyzeComplaint(id) {
-  return await apiRequest(`/api/complaints/${id}/analyze`, {
+  return await apiRequest(`/api/complaints/${id}/analyze`, { method: 'POST' });
+}
+
+export async function previewComplaintRisk(payload) {
+  try {
+    return await apiRequest('/api/complaints/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  } catch (e) { return null; }
+}
+
+export async function recommendComplaint(payload) {
+  return await apiRequest('/api/complaints/recommend', {
     method: 'POST',
+    body: JSON.stringify(payload),
   });
 }
 
-/** List all tickets */
+export async function getRankedComplaints() {
+  try { return await apiRequest('/api/complaints/ranked'); } catch (e) { return null; }
+}
+
+export async function getCategoryWiseComplaints() {
+  try { return await apiRequest('/api/complaints/by-category'); } catch (e) { return null; }
+}
+
+export async function resetDemoData() {
+  return await apiRequest('/api/complaints/demo', { method: 'DELETE' });
+}
+
+/** Student reopens a complaint */
+export async function reopenComplaint(complaintId, reason) {
+  return await apiRequest(`/api/complaints/${complaintId}/reopen`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/** Student submits feedback after resolution */
+export async function submitComplaintFeedback(complaintId, rating, comment = '') {
+  return await apiRequest(`/api/complaints/${complaintId}/feedback`, {
+    method: 'POST',
+    body: JSON.stringify({ rating, comment }),
+  });
+}
+
+/** Student — get only their own complaints */
+export async function getMyComplaints() {
+  try { return await apiRequest('/api/student/my-complaints'); } catch (e) { return null; }
+}
+
+
+// ---------------------------------------------------------------------------
+// Tickets
+// ---------------------------------------------------------------------------
+
 export async function getTickets() {
-  try {
-    return await apiRequest('/api/tickets');
-  } catch (e) {
-    console.error('getTickets error:', e);
-    return null;
-  }
+  try { return await apiRequest('/api/tickets'); } catch (e) { return null; }
 }
 
-/** Get a single ticket */
 export async function getTicket(id) {
-  try {
-    return await apiRequest(`/api/tickets/${id}`);
-  } catch (e) {
-    console.error('getTicket error:', e);
-    return null;
-  }
+  try { return await apiRequest(`/api/tickets/${id}`); } catch (e) { return null; }
 }
 
-/** Generate a maintenance ticket from a complaint */
 export async function generateTicket(complaintId) {
   return await apiRequest('/api/tickets', {
     method: 'POST',
@@ -148,76 +211,6 @@ export async function generateTicket(complaintId) {
   });
 }
 
-/** Get AI/Ollama status */
-export async function getAIStatus() {
-  try {
-    return await apiRequest('/api/ai/status');
-  } catch (e) {
-    console.error('getAIStatus error:', e);
-    return null;
-  }
-}
-
-/** Delete and re-seed demo data */
-export async function resetDemoData() {
-  return await apiRequest('/api/complaints/demo', {
-    method: 'DELETE',
-  });
-}
-
-/** Upload an image */
-export async function uploadImage(file) {
-  const form = new FormData();
-  form.append('file', file);
-  return await apiRequest('/api/upload', {
-    method: 'POST',
-    body: form,
-  });
-}
-
-/** Health check */
-export async function getHealthCheck() {
-  try {
-    return await apiRequest('/api/health');
-  } catch (e) {
-    return null;
-  }
-}
-
-/** Get list of categories */
-export async function getCategories() {
-  try {
-    return await apiRequest('/api/categories');
-  } catch (e) {
-    console.error('getCategories error:', e);
-    return null;
-  }
-}
-
-/** Get proactive campus risk intelligence, building scorecards & advisories */
-export async function getCampusRiskIntelligence() {
-  try {
-    return await apiRequest('/api/analytics/risk-index');
-  } catch (e) {
-    console.error('getCampusRiskIntelligence error:', e);
-    return null;
-  }
-}
-
-/** Real-time pre-submission risk preview as student types */
-export async function previewComplaintRisk(payload) {
-  try {
-    return await apiRequest('/api/complaints/preview', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  } catch (e) {
-    console.error('previewComplaintRisk error:', e);
-    return null;
-  }
-}
-
-/** Complete and sign off a maintenance ticket */
 export async function resolveTicket(ticketId, payload) {
   return await apiRequest(`/api/tickets/${ticketId}/resolve`, {
     method: 'PUT',
@@ -226,56 +219,155 @@ export async function resolveTicket(ticketId, payload) {
 }
 
 
-/** Login with username and password */
-export async function loginUser(username, password) {
-  return await apiRequest('/api/auth/login', {
+// ---------------------------------------------------------------------------
+// File Upload
+// ---------------------------------------------------------------------------
+
+export async function uploadImage(file) {
+  const form = new FormData();
+  form.append('file', file);
+  return await apiRequest('/api/upload', { method: 'POST', body: form });
+}
+
+
+// ---------------------------------------------------------------------------
+// Risk Intelligence
+// ---------------------------------------------------------------------------
+
+export async function getCampusRiskIntelligence() {
+  try { return await apiRequest('/api/analytics/risk-index'); } catch (e) { return null; }
+}
+
+
+// ---------------------------------------------------------------------------
+// Warden Endpoints
+// ---------------------------------------------------------------------------
+
+/** Get all available workers */
+export async function getWorkers() {
+  try { return await apiRequest('/api/warden/workers'); } catch (e) { return null; }
+}
+
+/** Assign a complaint to a worker */
+export async function assignWorker(complaintId, workerId, instructions = '') {
+  return await apiRequest('/api/warden/assign', {
     method: 'POST',
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ complaint_id: complaintId, worker_id: workerId, instructions }),
   });
 }
 
-/** Get current user profile */
-export async function getMyProfile() {
-  try {
-    return await apiRequest('/api/auth/me');
-  } catch (e) {
-    return null;
-  }
+/** Warden verifies or reopens a completed repair */
+export async function verifyRepair(assignmentId, action, feedback = '') {
+  return await apiRequest(`/api/warden/verify/${assignmentId}`, {
+    method: 'POST',
+    body: JSON.stringify({ action, feedback }),
+  });
 }
 
-/** Get demo users list */
-export async function getDemoUsers() {
-  try {
-    return await apiRequest('/api/auth/demo-users');
-  } catch (e) {
-    return null;
-  }
+/** Get critical P1 alerts */
+export async function getCriticalAlerts() {
+  try { return await apiRequest('/api/warden/critical-alerts'); } catch (e) { return null; }
 }
 
-/** Pre-submission recommendation */
-export async function recommendComplaint(payload) {
-  return await apiRequest('/api/complaints/recommend', {
+/** Get overdue tasks (SLA breached) */
+export async function getOverdueTasks() {
+  try { return await apiRequest('/api/warden/overdue'); } catch (e) { return null; }
+}
+
+
+// ---------------------------------------------------------------------------
+// Worker Endpoints
+// ---------------------------------------------------------------------------
+
+/** Get tasks assigned to the logged-in worker */
+export async function getWorkerTasks(status = null) {
+  try {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    return await apiRequest(`/api/worker/my-tasks${qs}`);
+  } catch (e) { return null; }
+}
+
+/** Worker accepts or rejects an assigned task */
+export async function respondToTask(assignmentId, action, rejectionReason = '') {
+  return await apiRequest(`/api/worker/tasks/${assignmentId}/respond`, {
+    method: 'POST',
+    body: JSON.stringify({ action, rejection_reason: rejectionReason }),
+  });
+}
+
+/** Worker updates task status with evidence */
+export async function updateWorkerTaskStatus(assignmentId, status, workerNotes = '', beforePhoto = null, afterPhoto = null) {
+  return await apiRequest(`/api/worker/tasks/${assignmentId}/status`, {
+    method: 'POST',
+    body: JSON.stringify({
+      status,
+      worker_notes: workerNotes,
+      before_photo: beforePhoto,
+      after_photo: afterPhoto,
+    }),
+  });
+}
+
+
+// ---------------------------------------------------------------------------
+// Admin — Candidate Management
+// ---------------------------------------------------------------------------
+
+export async function getAllCandidates(search = '', role = '') {
+  try {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    if (role)   params.set('role', role);
+    const qs = params.toString();
+    return await apiRequest(`/api/admin/candidates${qs ? '?' + qs : ''}`);
+  } catch (e) { return null; }
+}
+
+export async function createCandidate(payload) {
+  return await apiRequest('/api/admin/candidates', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
-/** Ranked complaints */
-export async function getRankedComplaints() {
-  try {
-    return await apiRequest('/api/complaints/ranked');
-  } catch (e) {
-    console.error('getRankedComplaints error:', e);
-    return null;
-  }
+export async function updateCandidate(id, payload) {
+  return await apiRequest(`/api/admin/candidates/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
 }
 
-/** Category-wise complaints */
-export async function getCategoryWiseComplaints() {
-  try {
-    return await apiRequest('/api/complaints/by-category');
-  } catch (e) {
-    console.error('getCategoryWiseComplaints error:', e);
-    return null;
-  }
+export async function resetCandidatePassword(id, newPassword = null) {
+  return await apiRequest(`/api/admin/candidates/${id}/reset-password`, {
+    method: 'POST',
+    body: JSON.stringify({ new_password: newPassword }),
+  });
+}
+
+export async function toggleCandidateStatus(id, accountStatus) {
+  return await apiRequest(`/api/admin/candidates/${id}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ account_status: accountStatus }),
+  });
+}
+
+export async function getAuditLogs() {
+  try { return await apiRequest('/api/admin/audit-logs'); } catch (e) { return null; }
+}
+
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+export async function getNotifications() {
+  try { return await apiRequest('/api/notifications'); } catch (e) { return null; }
+}
+
+export async function markNotificationRead(notificationId) {
+  return await apiRequest(`/api/notifications/${notificationId}/read`, { method: 'PUT' });
+}
+
+export async function markAllNotificationsRead() {
+  return await apiRequest('/api/notifications/read-all', { method: 'PUT' });
 }

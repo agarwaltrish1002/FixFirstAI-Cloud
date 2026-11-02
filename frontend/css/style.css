@@ -4,28 +4,36 @@
 
 /* ---------- CSS Variables ---------- */
 :root {
-  --primary: #16a34a;
-  --primary-dark: #15803d;
-  --primary-light: #22c55e;
-  --primary-bg: #f0fdf4;
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light: #3b82f6;
+  --primary-bg: #eff6ff;
+  --navy-950: #0a0f1d;
+  --navy-900: #0f172a;
+  --navy-800: #1e293b;
+  --navy-700: #334155;
   --white: #ffffff;
-  --gray-50: #f9fafb;
-  --gray-100: #f3f4f6;
-  --gray-200: #e5e7eb;
-  --gray-300: #d1d5db;
-  --gray-500: #6b7280;
-  --gray-700: #374151;
-  --gray-900: #111827;
+  --gray-50: #f8fafc;
+  --gray-100: #f1f5f9;
+  --gray-200: #e2e8f0;
+  --gray-300: #cbd5e1;
+  --gray-500: #64748b;
+  --gray-700: #334155;
+  --gray-900: #0f172a;
   --red: #dc2626;
   --red-bg: #fef2f2;
   --orange: #ea580c;
   --orange-bg: #fff7ed;
-  --yellow: #ca8a04;
+  --yellow: #d97706;
   --yellow-bg: #fefce8;
   --blue: #2563eb;
   --blue-bg: #eff6ff;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --green: #16a34a;
+  --green-bg: #f0fdf4;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.08);
   --radius: 8px;
   --radius-lg: 12px;
 
@@ -81,12 +89,13 @@ h1, h2, h3, h4, h5, h6 {
   left: 0;
   width: var(--sidebar-width);
   height: 100vh;
-  background: var(--primary-dark);
+  background: var(--navy-900);
   color: var(--white);
   display: flex;
   flex-direction: column;
   z-index: 100;
   transition: transform 0.3s ease;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .sidebar-header {
@@ -140,9 +149,10 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .nav-item.active {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--navy-800);
   color: var(--white);
-  border-left-color: var(--white);
+  border-left-color: #3b82f6;
+  font-weight: 600;
 }
 
 .nav-icon {
@@ -230,6 +240,63 @@ h1, h2, h3, h4, h5, h6 {
 
 .connection-dot.disconnected {
   background: var(--red);
+}
+
+/* ---------- Dual Separate Status Indicators (AI + Safety Engine) ---------- */
+.dual-status-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  color: var(--gray-700);
+  cursor: default;
+  transition: all 0.2s ease;
+}
+
+.status-pill-ai {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.status-pill-safety {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.dot-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.dot-indicator.dot-green {
+  background: #16a34a;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.2);
+}
+
+.dot-indicator.dot-yellow {
+  background: #eab308;
+  box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.2);
+}
+
+.dot-indicator.dot-red {
+  background: #dc2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
 }
 
 .hamburger {
@@ -469,6 +536,47 @@ h1, h2, h3, h4, h5, h6 {
 .hover-shadow:hover {
   box-shadow: var(--shadow-md);
   transform: translateY(-2px);
+}
+
+/* ---------- Complaint Photo Thumbnail ---------- */
+.complaint-thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--gray-200);
+  cursor: pointer;
+  transition: transform 0.15s;
+  display: block;
+}
+
+.complaint-thumb:hover {
+  transform: scale(1.08);
+  border-color: var(--primary);
+}
+
+/* ---------- Complaint Detail Photo ---------- */
+.complaint-photo-wrap {
+  margin-top: 6px;
+}
+
+.complaint-photo-wrap a {
+  display: inline-block;
+}
+
+.complaint-photo-full {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 10px;
+  border: 1px solid var(--gray-200);
+  object-fit: contain;
+  display: block;
+  cursor: zoom-in;
+  transition: box-shadow 0.15s;
+}
+
+.complaint-photo-full:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
 }
 
 /* ---------- Tables ---------- */
@@ -825,7 +933,7 @@ tbody tr:nth-child(even):hover {
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 200;
+  z-index: 100000;
   align-items: center;
   justify-content: center;
   padding: 24px;
@@ -835,7 +943,8 @@ tbody tr:nth-child(even):hover {
   display: flex;
 }
 
-.modal {
+.modal,
+.modal-container {
   background: var(--white);
   border-radius: var(--radius-lg);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
@@ -1279,7 +1388,8 @@ tbody tr:nth-child(even):hover {
     padding: 0;
   }
 
-  .modal {
+  .modal,
+.modal-container {
     box-shadow: none;
     max-height: none;
     max-width: 100%;
@@ -1399,7 +1509,8 @@ tbody tr:nth-child(even):hover {
     max-width: none;
   }
 
-  .modal {
+  .modal,
+.modal-container {
     max-height: 95vh;
   }
 }
@@ -1934,3 +2045,524 @@ tbody tr:nth-child(even):hover {
 .mb-2  { margin-bottom: 8px; }
 .gap-8 { gap: 8px; }
 .flex-wrap { flex-wrap: wrap; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MULTI-ROLE CAMPUS PLATFORM UPGRADE STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Role Selection Portal (Logged-Out Full-Screen) ──────────────────────── */
+.portal-overlay {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.portal-container {
+  max-width: 880px;
+  width: 100%;
+  text-align: center;
+  animation: fadeInScale 0.3s ease-out;
+}
+
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.portal-header {
+  margin-bottom: 36px;
+}
+
+.portal-logo {
+  font-size: 48px;
+  margin-bottom: 12px;
+  display: inline-block;
+}
+
+.portal-title {
+  font-size: 32px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.5px;
+  margin-bottom: 6px;
+}
+
+.portal-subtitle {
+  font-size: 15px;
+  color: #94a3b8;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.portal-desc {
+  font-size: 13px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.portal-roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 18px;
+}
+
+.portal-role-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  color: #f8fafc;
+  outline: none;
+}
+
+.portal-role-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 12px 24px -6px rgba(0, 0, 0, 0.4);
+}
+
+.portal-role-card.student:hover { background: linear-gradient(180deg, rgba(29, 78, 216, 0.2), rgba(29, 78, 216, 0.05)); border-color: #3b82f6; }
+.portal-role-card.warden:hover  { background: linear-gradient(180deg, rgba(21, 128, 61, 0.2), rgba(21, 128, 61, 0.05));  border-color: #22c55e; }
+.portal-role-card.worker:hover  { background: linear-gradient(180deg, rgba(180, 83, 9, 0.2), rgba(180, 83, 9, 0.05));   border-color: #f59e0b; }
+.portal-role-card.admin:hover   { background: linear-gradient(180deg, rgba(124, 58, 237, 0.2), rgba(124, 58, 237, 0.05)); border-color: #a855f7; }
+
+.role-card-icon {
+  font-size: 38px;
+  margin-bottom: 12px;
+}
+
+.role-card-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.role-card-desc {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.4;
+  margin-bottom: 14px;
+  min-height: 34px;
+}
+
+.role-card-arrow {
+  font-size: 16px;
+  font-weight: 700;
+  color: #38bdf8;
+  transition: transform 0.2s ease;
+}
+
+.portal-role-card:hover .role-card-arrow {
+  transform: translateX(4px);
+}
+
+/* ── Login Modal & Role Banners ─────────────────────────────────────────── */
+.login-role-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.role-banner-student { background: #eff6ff; color: #1d4ed8; }
+.role-banner-warden  { background: #f0fdf4; color: #15803d; }
+.role-banner-worker  { background: #fffbeb; color: #b45309; }
+.role-banner-admin   { background: #faf5ff; color: #7c3aed; }
+
+.login-demo-section {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.login-demo-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--gray-500);
+  margin-bottom: 8px;
+}
+
+.demo-accounts-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.demo-account-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: #ffffff;
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  gap: 8px;
+}
+
+.demo-account-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.demo-account-info {
+  font-size: 11px;
+  color: var(--gray-500);
+}
+
+.login-divider {
+  text-align: center;
+  margin: 14px 0 10px;
+  position: relative;
+}
+
+.login-divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--gray-200);
+}
+
+.login-divider span {
+  position: relative;
+  background: var(--gray-50);
+  padding: 0 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--gray-400);
+}
+
+/* ── Header User Role Chips ─────────────────────────────────────────────── */
+.user-chip.role-student { background: rgba(29, 78, 216, 0.12); color: #1d4ed8; }
+.user-chip.role-warden  { background: rgba(21, 128, 61, 0.12);  color: #15803d; }
+.user-chip.role-worker  { background: rgba(180, 83, 9, 0.12);   color: #b45309; }
+.user-chip.role-admin   { background: rgba(124, 58, 237, 0.12); color: #7c3aed; }
+
+/* ── Notification Bell & Dropdown ───────────────────────────────────────── */
+.notif-bell-wrapper {
+  position: relative;
+}
+
+.notif-bell {
+  background: none;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 16px;
+  cursor: pointer;
+  position: relative;
+  color: var(--gray-700);
+}
+
+.notif-bell:hover {
+  background: var(--gray-100);
+}
+
+.notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ef4444;
+  color: #ffffff;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 5px;
+  line-height: 1;
+}
+
+.notif-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  background: #ffffff;
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.notif-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--gray-50);
+  border-bottom: 1px solid var(--gray-200);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gray-700);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.btn-link:hover { text-decoration: underline; }
+
+.notif-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.notif-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--gray-100);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.notif-item:hover { background: var(--gray-50); }
+.notif-item.unread { background: #f0fdf4; border-left: 3px solid #22c55e; }
+
+.notif-item-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 2px;
+}
+
+.notif-item-msg {
+  font-size: 12px;
+  color: var(--gray-600);
+  line-height: 1.3;
+}
+
+.notif-item-time {
+  font-size: 10px;
+  color: var(--gray-400);
+  margin-top: 4px;
+}
+
+.notif-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--gray-400);
+  font-size: 12px;
+}
+
+/* ── Worker Tasks & Sensitive Hygiene Styling ───────────────────────────── */
+.worker-tasks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.worker-task-card {
+  background: #ffffff;
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+.worker-task-card.sensitive-task {
+  border-left: 4px solid #ec4899;
+  background: #fdf2f8;
+}
+
+.task-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.task-id {
+  font-size: 11px;
+  font-family: monospace;
+  font-weight: 700;
+  color: var(--gray-500);
+}
+
+.sensitive-badge {
+  display: inline-block;
+  background: #fce7f3;
+  color: #9d174d;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+}
+
+.task-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 12px;
+  line-height: 1.3;
+}
+
+.task-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  background: var(--gray-50);
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.task-meta-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.meta-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--gray-500);
+  font-weight: 600;
+}
+
+.meta-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.task-description {
+  font-size: 12px;
+  color: var(--gray-700);
+  line-height: 1.4;
+  margin-bottom: 12px;
+}
+
+.task-description.sensitive-desc {
+  background: #fff;
+  border: 1px dashed #f472b6;
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.task-instructions {
+  background: #fffbeb;
+  border-left: 3px solid #f59e0b;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #92400e;
+  margin-bottom: 14px;
+}
+
+.task-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+
+/* ── Admin Management Badges & Actions ──────────────────────────────────── */
+.badge-inactive {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.spinner-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+}
+
+
+/* ── Additional Portal & Action Styles ───────────────────────────────────── */
+.role-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 14px;
+}
+
+.portal-guest-bar {
+  margin-top: 32px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+}
+
+.btn-portal-demo {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.btn-portal-demo:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-portal-login {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.btn-portal-login.student { background: #2563eb; color: #fff; }
+.btn-portal-login.student:hover { background: #1d4ed8; }
+
+.btn-portal-login.warden { background: #16a34a; color: #fff; }
+.btn-portal-login.warden:hover { background: #15803d; }
+
+.btn-portal-login.worker { background: #d97706; color: #fff; }
+.btn-portal-login.worker:hover { background: #b45309; }
+
+.btn-portal-login.admin { background: #9333ea; color: #fff; }
+.btn-portal-login.admin:hover { background: #7c3aed; }

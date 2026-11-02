@@ -1,33 +1,41 @@
 /**
- * FixFirst AI — Authentication & Role Manager
- * ============================================
- * Handles user sessions, JWT tokens in localStorage,
- * role-based UI scoping (Student vs Teacher/Warden), and demo user switching.
+ * FixFirst AI — Authentication & 4-Role Portal Manager
+ * =====================================================
+ * Handles JWT sessions, 4 separate role login portals,
+ * header UI, and notification bell management.
  */
 
-import { loginUser, getDemoUsers } from './api.js';
+import { loginUser, getDemoUsers, getNotifications, markAllNotificationsRead, markNotificationRead } from './api.js';
 
 let currentUser = null;
 let currentToken = null;
 let onAuthChangeCallback = null;
+
+const ROLE_CONFIG = {
+  student: { icon: '🎓', label: 'Student', color: '#1d4ed8', bgClass: 'role-student' },
+  warden:  { icon: '🛡️', label: 'Warden',  color: '#15803d', bgClass: 'role-warden'  },
+  worker:  { icon: '🔧', label: 'Worker',  color: '#b45309', bgClass: 'role-worker'  },
+  admin:   { icon: '⚙️', label: 'Admin',   color: '#7c3aed', bgClass: 'role-admin'   },
+  teacher: { icon: '🛡️', label: 'Warden',  color: '#15803d', bgClass: 'role-warden'  },
+};
+
+// ---------------------------------------------------------------------------
+// Auth State
+// ---------------------------------------------------------------------------
 
 export function getAuthState() {
   if (!currentToken) {
     currentToken = localStorage.getItem('fixfirst_token');
     const userStr = localStorage.getItem('fixfirst_user');
     if (userStr) {
-      try {
-        currentUser = JSON.parse(userStr);
-      } catch (e) {
-        currentUser = null;
-      }
+      try { currentUser = JSON.parse(userStr); } catch { currentUser = null; }
     }
   }
   return {
     isAuthenticated: !!currentToken && !!currentUser,
     token: currentToken,
     user: currentUser,
-    role: currentUser ? currentUser.role : 'guest',
+    role: currentUser ? (currentUser.role || 'student') : 'guest',
   };
 }
 
@@ -37,200 +45,365 @@ export function setAuthState(token, user) {
   localStorage.setItem('fixfirst_token', token);
   localStorage.setItem('fixfirst_user', JSON.stringify(user));
   updateHeaderUI();
-  if (typeof onAuthChangeCallback === 'function') {
-    onAuthChangeCallback(getAuthState());
-  }
+  if (typeof onAuthChangeCallback === 'function') onAuthChangeCallback(getAuthState());
 }
 
 export function clearAuthState() {
+  stopNotificationPolling();
   currentToken = null;
   currentUser = null;
   localStorage.removeItem('fixfirst_token');
   localStorage.removeItem('fixfirst_user');
   updateHeaderUI();
-  if (typeof onAuthChangeCallback === 'function') {
-    onAuthChangeCallback(getAuthState());
-  }
+  showPortal();
+  if (typeof onAuthChangeCallback === 'function') onAuthChangeCallback(getAuthState());
 }
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
 
 export function initAuth(onChange) {
   onAuthChangeCallback = onChange;
   const state = getAuthState();
 
-  // If no user is logged in, default to student1 for a seamless demo experience
   if (!state.isAuthenticated) {
-    autoLoginDefaultDemo();
+    showPortal();
   } else {
+    hidePortal();
+    showAppShell();
     updateHeaderUI();
-    if (typeof onAuthChangeCallback === 'function') {
-      onAuthChangeCallback(state);
-    }
+    if (typeof onAuthChangeCallback === 'function') onAuthChangeCallback(state);
   }
 
-  // Setup click listeners on Login / Role buttons
+  // Header logout button
   document.addEventListener('click', (e) => {
-    if (e.target && e.target.closest('#roleSwitchBtn')) {
-      showLoginModal();
-    }
-    if (e.target && e.target.closest('#logoutBtn')) {
+    const target = e.target;
+    if (target && (target.closest('#logoutBtn') || target.closest('#logoutSidebarBtn'))) {
       clearAuthState();
-      showLoginModal();
+    }
+    if (target && target.closest('#roleSwitchBtn')) {
+      clearAuthState();
     }
   });
 }
 
-async function autoLoginDefaultDemo() {
-  try {
-    const res = await loginUser('student1', 'Student@123');
-    if (res && res.access_token) {
-      setAuthState(res.access_token, res.user);
-    }
-  } catch (err) {
-    console.warn('Auto demo login notice:', err);
-    updateHeaderUI();
-  }
+// ---------------------------------------------------------------------------
+// Portal: Show 4 role cards (logged-out state)
+// ---------------------------------------------------------------------------
+
+export function showPortal() {
+  const portal = document.getElementById('portalOverlay');
+  const app = document.getElementById('appShell');
+  if (portal) portal.style.display = 'flex';
+  if (app) app.style.display = 'none';
 }
 
-export function updateHeaderUI() {
-  const container = document.getElementById('userAuthContainer');
-  if (!container) return;
-
-  const state = getAuthState();
-  if (state.isAuthenticated && state.user) {
-    const isStaff = state.role === 'teacher' || state.role === 'warden';
-    const roleBadgeClass = isStaff ? 'role-badge-staff' : 'role-badge-student';
-    const roleIcon = isStaff ? '🛡️' : '🎓';
-    const roleLabel = state.role === 'warden' ? 'Hostel Warden' : (state.role === 'teacher' ? 'Faculty / Committee' : 'Student');
-
-    container.innerHTML = `
-      <div class="user-chip" id="roleSwitchBtn" title="Click to switch role or account">
-        <span class="user-role-badge ${roleBadgeClass}">${roleIcon} ${roleLabel}</span>
-        <span class="user-name">${state.user.full_name || state.user.username}</span>
-        <span class="switch-hint">⇄ Switch</span>
-      </div>
-    `;
-  } else {
-    container.innerHTML = `
-      <button class="btn btn-sm btn-primary" id="roleSwitchBtn">
-        🔑 Log In
-      </button>
-    `;
-  }
+export function hidePortal() {
+  const portal = document.getElementById('portalOverlay');
+  if (portal) portal.style.display = 'none';
 }
 
-export async function showLoginModal() {
-  const modalOverlay = document.getElementById('modalOverlay');
+export function showAppShell() {
+  const app = document.getElementById('appShell');
+  if (app) app.style.display = 'flex';
+}
+
+// ---------------------------------------------------------------------------
+// Role-specific Login Modal
+// ---------------------------------------------------------------------------
+
+export async function openLoginModal(roleHint = null) {
+  const modal = document.getElementById('modalOverlay');
   const modalTitle = document.getElementById('modalTitle');
   const modalBody = document.getElementById('modalBody');
   const modalFooter = document.getElementById('modalFooter');
+  if (!modal || !modalBody) return;
 
-  if (!modalOverlay || !modalBody) return;
+  const cfg = roleHint ? ROLE_CONFIG[roleHint] : null;
+  const roleTitle = cfg ? `${cfg.icon} ${cfg.label} Login` : '🔑 Campus Login';
 
-  modalTitle.textContent = 'Campus Portal Authentication';
+  modalTitle.textContent = roleTitle;
 
+  // Fetch demo accounts for the selected role
   let demoAccounts = [];
   try {
     const res = await getDemoUsers();
-    demoAccounts = res.accounts || [];
-  } catch (e) {
-    demoAccounts = [
-      { username: 'student1', role: 'student', full_name: 'Aarav Sharma', label: 'Student (Hostel H1)', password: 'Student@123' },
-      { username: 'warden1', role: 'warden', full_name: 'Rajesh Kumar', label: 'Chief Hostel Warden', password: 'Warden@123' },
-      { username: 'teacher1', role: 'teacher', full_name: 'Dr. Sunita Rao', label: 'Faculty Maintenance Committee', password: 'Teacher@123' },
-    ];
-  }
+    const all = (res && res.accounts) ? res.accounts : [];
+    demoAccounts = roleHint ? all.filter(a => {
+      const aRole = a.role === 'teacher' ? 'warden' : a.role;
+      return aRole === roleHint;
+    }) : all;
+  } catch { demoAccounts = []; }
+
+  const demoCardsHtml = demoAccounts.length > 0 ? `
+    <div class="login-demo-section">
+      <p class="login-demo-label">Quick 1-Click Demo Login:</p>
+      <div class="demo-accounts-grid">
+        ${demoAccounts.map(acc => `
+          <div class="demo-account-card" data-user="${acc.username}" data-pass="${acc.password}">
+            <div>
+              <div class="demo-account-name">${acc.full_name}</div>
+              <div class="demo-account-info">${acc.label}</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary demo-quick-login">
+              Login →
+            </button>
+          </div>
+        `).join('')}
+      </div>
+      <div class="login-divider"><span>OR ENTER CREDENTIALS</span></div>
+    </div>
+  ` : '';
 
   modalBody.innerHTML = `
-    <div class="auth-modal-content">
-      <div class="auth-banner">
-        <h4>Role-Based Access Control</h4>
-        <p>Choose your campus role or enter your credentials to test distinct Student and Teacher/Warden views.</p>
-      </div>
+    <div class="login-modal-content">
+      ${cfg ? `<div class="login-role-banner role-banner-${roleHint}">
+        <span class="login-role-icon">${cfg.icon}</span>
+        <span>${cfg.label} Portal Authentication</span>
+      </div>` : ''}
 
-      <div class="demo-role-grid">
-        ${demoAccounts.map(acc => {
-          const isStaff = acc.role === 'teacher' || acc.role === 'warden';
-          const icon = acc.role === 'warden' ? '🛡️' : (acc.role === 'teacher' ? '👨‍🏫' : '🎓');
-          return `
-            <div class="demo-card ${isStaff ? 'demo-staff' : 'demo-student'}" data-user="${acc.username}" data-pass="${acc.password}">
-              <div class="demo-icon">${icon}</div>
-              <div class="demo-info">
-                <strong>${acc.label}</strong>
-                <small>${acc.full_name} (${acc.username})</small>
-              </div>
-              <button type="button" class="btn btn-sm btn-outline-primary demo-login-btn">Log In</button>
-            </div>
-          `;
-        }).join('')}
-      </div>
+      ${demoCardsHtml}
 
-      <div class="auth-divider"><span>OR CUSTOM CREDENTIALS</span></div>
-
-      <form id="customLoginForm" class="custom-login-form">
-        <div class="form-group mb-2">
-          <label>Username</label>
-          <input type="text" id="loginUsername" class="form-control" placeholder="e.g. student1 or warden1" required />
+      <form id="loginForm" class="login-form" autocomplete="off">
+        <div class="form-group">
+          <label class="form-label" for="loginUsername">Username</label>
+          <input type="text" id="loginUsername" class="form-control" placeholder="Enter your username" required autocomplete="username" />
         </div>
-        <div class="form-group mb-3">
-          <label>Password</label>
-          <input type="password" id="loginPassword" class="form-control" placeholder="Enter password" required />
+        <div class="form-group">
+          <label class="form-label" for="loginPassword">Password</label>
+          <div class="password-input-wrapper">
+            <input type="password" id="loginPassword" class="form-control" placeholder="Enter your password" required autocomplete="current-password" />
+            <button type="button" class="password-toggle" onclick="this.previousElementSibling.type = this.previousElementSibling.type === 'password' ? 'text' : 'password'">👁</button>
+          </div>
         </div>
-        <div id="loginErrorMsg" class="alert alert-danger" style="display:none; font-size: 13px; margin-bottom: 10px;"></div>
-        <button type="submit" class="btn btn-primary w-100" id="loginSubmitBtn">Sign In with Credentials</button>
+        <div id="loginError" class="alert alert-danger" style="display:none; font-size:13px; margin-bottom:10px;"></div>
+        <button type="submit" class="btn btn-primary w-100" id="loginSubmitBtn">
+          Sign In ${cfg ? 'as ' + cfg.label : ''}
+        </button>
       </form>
     </div>
   `;
 
   modalFooter.innerHTML = `
-    <button class="btn btn-outline-secondary" id="authModalClose">Close</button>
+    <button class="btn btn-outline-secondary" id="loginModalBack">← Back to Portal</button>
   `;
 
-  modalOverlay.classList.add('active');
+  modal.classList.add('active');
 
-  // Handle demo clicks
-  modalBody.querySelectorAll('.demo-card').forEach(card => {
-    card.addEventListener('click', async () => {
-      const u = card.getAttribute('data-user');
-      const p = card.getAttribute('data-pass');
-      await executeLogin(u, p);
+  // Demo quick login handlers
+  modalBody.querySelectorAll('.demo-account-card').forEach(card => {
+    card.querySelector('.demo-quick-login').addEventListener('click', async () => {
+      const u = card.dataset.user;
+      const p = card.dataset.pass;
+      await executeLogin(u, p, roleHint);
     });
   });
 
-  // Handle form submit
-  const form = document.getElementById('customLoginForm');
+  // Form submit
+  const form = document.getElementById('loginForm');
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const u = document.getElementById('loginUsername').value.trim();
     const p = document.getElementById('loginPassword').value;
-    await executeLogin(u, p);
+    await executeLogin(u, p, roleHint);
   });
 
-  const closeBtn = document.getElementById('authModalClose');
-  if (closeBtn) {
-    closeBtn.addEventListener('click', () => {
-      modalOverlay.classList.remove('active');
-    });
-  }
+  // Back button
+  document.getElementById('loginModalBack').addEventListener('click', () => {
+    modal.classList.remove('active');
+  });
 }
 
-async function executeLogin(username, password) {
-  const errBox = document.getElementById('loginErrorMsg');
+// Make globally accessible for inline onclick in HTML
+window.openLoginModal = openLoginModal;
+
+window.quickDemoLogin = async (username, password, roleHint) => {
+  await executeLogin(username, password, roleHint);
+};
+
+window.continueAsGuest = () => {
+  hidePortal();
+  showAppShell();
+  updateHeaderUI();
+  window.navigateTo?.('dashboard');
+};
+
+async function executeLogin(username, password, roleHint) {
+  const errBox = document.getElementById('loginError');
+  const submitBtn = document.getElementById('loginSubmitBtn');
   if (errBox) errBox.style.display = 'none';
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Signing in…'; }
 
   try {
-    const res = await loginUser(username, password);
+    const res = await loginUser(username, password, roleHint);
     if (res && res.access_token) {
       setAuthState(res.access_token, res.user);
-      const modalOverlay = document.getElementById('modalOverlay');
-      if (modalOverlay) modalOverlay.classList.remove('active');
-      window.showToast?.(`Logged in successfully as ${res.user.full_name} (${res.user.role.toUpperCase()})`, 'success');
+      const modal = document.getElementById('modalOverlay');
+      if (modal) modal.classList.remove('active');
+      hidePortal();
+      showAppShell();
+      const cfg = ROLE_CONFIG[res.user.role] || ROLE_CONFIG.student;
+      window.showToast?.(`Welcome, ${res.user.full_name}! Logged in as ${cfg.label}.`, 'success');
     }
   } catch (err) {
     if (errBox) {
-      errBox.textContent = err.message || 'Login failed. Invalid username or password.';
+      errBox.textContent = err.message || 'Invalid username or password.';
       errBox.style.display = 'block';
     } else {
       alert(err.message);
     }
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign In';
+    }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Header UI Update
+// ---------------------------------------------------------------------------
+
+export function updateHeaderUI() {
+  const container = document.getElementById('userAuthContainer');
+  const sidebarLabel = document.getElementById('sidebarRoleLabel');
+  const headerSubtitle = document.getElementById('headerSubtitle');
+  const notifBell = document.getElementById('notifBellWrapper');
+  const resetBtn = document.getElementById('resetDemoBtn');
+
+  const state = getAuthState();
+
+  if (state.isAuthenticated && state.user) {
+    const cfg = ROLE_CONFIG[state.role] || ROLE_CONFIG.student;
+    const name = state.user.full_name || state.user.username;
+
+    if (container) {
+      container.innerHTML = `
+        <div class="user-chip ${cfg.bgClass}">
+          <span class="user-role-icon">${cfg.icon}</span>
+          <span class="user-name">${name}</span>
+          <button class="btn btn-xs" id="logoutBtn" title="Logout" style="margin-left:8px;background:rgba(255,255,255,0.2);border:none;color:inherit;border-radius:6px;padding:2px 8px;cursor:pointer;">Logout</button>
+        </div>
+      `;
+    }
+
+    if (sidebarLabel) sidebarLabel.textContent = `${cfg.label} Portal`;
+    if (headerSubtitle) headerSubtitle.textContent = `${cfg.label} · Campus Safety & Maintenance`;
+    if (notifBell) notifBell.style.display = '';
+    if (resetBtn && (state.role === 'admin' || state.role === 'warden')) resetBtn.style.display = '';
+  } else {
+    if (container) {
+      container.innerHTML = `<button class="btn btn-sm btn-primary" onclick="window.showPortal ? window.showPortal() : window.openLoginModal()">🔑 Sign In</button>`;
+    }
+    if (notifBell) notifBell.style.display = 'none';
+    if (sidebarLabel) sidebarLabel.textContent = `Campus Maintenance`;
+    if (headerSubtitle) headerSubtitle.textContent = `Public Campus Dashboard`;
+  }
+}
+
+window.showPortal = showPortal;
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+let _notifInterval = null;
+
+export function startNotificationPolling() {
+  _loadNotifications();
+  clearInterval(_notifInterval);
+  _notifInterval = setInterval(_loadNotifications, 30000);
+}
+
+export function stopNotificationPolling() {
+  clearInterval(_notifInterval);
+}
+
+async function _loadNotifications() {
+  const state = getAuthState();
+  if (!state.isAuthenticated) return;
+
+  const res = await getNotifications();
+  if (!res) return;
+
+  const badge = document.getElementById('notifBadge');
+  const list  = document.getElementById('notifList');
+  const count = res.unread_count || 0;
+
+  if (badge) {
+    if (count > 0) {
+      badge.textContent = count > 9 ? '9+' : count;
+      badge.style.display = 'inline';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  if (list) {
+    const notifs = res.notifications || [];
+    if (notifs.length === 0) {
+      list.innerHTML = '<p class="notif-empty">No notifications yet</p>';
+    } else {
+      list.innerHTML = notifs.slice(0, 10).map(n => `
+        <div class="notif-item ${n.is_read ? '' : 'unread'}" data-id="${n.id}">
+          <div class="notif-item-title">${escapeHtml(n.title)}</div>
+          <div class="notif-item-msg">${escapeHtml(n.message)}</div>
+          <div class="notif-item-time">${_formatRelTime(n.created_at)}</div>
+        </div>
+      `).join('');
+
+      // Mark as read on click
+      list.querySelectorAll('.notif-item').forEach(el => {
+        el.addEventListener('click', async () => {
+          if (!el.classList.contains('unread')) return;
+          el.classList.remove('unread');
+          await markNotificationRead(el.dataset.id);
+          _loadNotifications();
+        });
+      });
+    }
+  }
+}
+
+// Setup notification bell toggle
+export function initNotificationBell() {
+  const bell = document.getElementById('notifBell');
+  const dropdown = document.getElementById('notifDropdown');
+  const markAllBtn = document.getElementById('markAllReadBtn');
+
+  if (bell && dropdown) {
+    bell.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = dropdown.style.display !== 'none';
+      dropdown.style.display = isOpen ? 'none' : 'block';
+    });
+    document.addEventListener('click', () => { dropdown.style.display = 'none'; });
+    dropdown.addEventListener('click', (e) => e.stopPropagation());
+  }
+
+  if (markAllBtn) {
+    markAllBtn.addEventListener('click', async () => {
+      await markAllNotificationsRead();
+      _loadNotifications();
+    });
+  }
+}
+
+function _formatRelTime(isoStr) {
+  if (!isoStr) return '';
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function escapeHtml(text) {
+  if (!text) return '';
+  const d = document.createElement('div');
+  d.textContent = String(text);
+  return d.innerHTML;
 }

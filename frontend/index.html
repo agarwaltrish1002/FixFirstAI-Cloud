@@ -3,143 +3,293 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FixFirst AI — Intelligent Campus Risk &amp; Maintenance Agent</title>
+  <title>FixFirst AI — Campus Safety & Maintenance Platform</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
-  <!-- Overlay for mobile sidebar -->
-  <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-  <!-- Sidebar -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-      <span class="sidebar-logo">🛠️</span>
-      <div>
-        <h1 class="sidebar-title">FixFirst AI</h1>
-        <p class="sidebar-subtitle">Campus Maintenance</p>
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       ROLE SELECTION PORTAL (shown when logged out)
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="portal-overlay" id="portalOverlay">
+    <div class="portal-container">
+      <div class="portal-header">
+        <div class="portal-logo">🛠️</div>
+        <h1 class="portal-title">FixFirst AI</h1>
+        <p class="portal-subtitle">Intelligent Campus Safety & Maintenance Management</p>
+        <p class="portal-desc">Choose your campus role to enter your dedicated command dashboard</p>
       </div>
-    </div>
-    <nav class="sidebar-nav" id="sidebarNav">
-      <!-- Always visible -->
-      <a href="#dashboard" class="nav-item active" data-page="dashboard">
-        <span class="nav-icon">📊</span>
-        <span class="nav-label">Dashboard</span>
-      </a>
-      <a href="#submit" class="nav-item" data-page="submit">
-        <span class="nav-icon">📝</span>
-        <span class="nav-label">Submit Complaint</span>
-      </a>
-      <a href="#complaints" class="nav-item" data-page="complaints">
-        <span class="nav-icon">📋</span>
-        <span class="nav-label">Complaints</span>
-      </a>
 
-      <!-- Staff-only nav items -->
-      <a href="#ranked-queue" class="nav-item" data-page="ranked-queue" data-role="staff">
-        <span class="nav-icon">📊</span>
-        <span class="nav-label">Urgency Queue</span>
-      </a>
-      <a href="#category-arranger" class="nav-item" data-page="category-arranger" data-role="staff">
-        <span class="nav-icon">📁</span>
-        <span class="nav-label">Category Arranger</span>
-      </a>
-      <a href="#risk-intelligence" class="nav-item" data-page="risk-intelligence" data-role="staff">
-        <span class="nav-icon">🧭</span>
-        <span class="nav-label">Risk Intelligence</span>
-      </a>
-      <a href="#tickets" class="nav-item" data-page="tickets" data-role="staff">
-        <span class="nav-icon">🎫</span>
-        <span class="nav-label">Tickets &amp; SLA</span>
-      </a>
-      <a href="#ai-status" class="nav-item" data-page="ai-status" data-role="staff">
-        <span class="nav-icon">🤖</span>
-        <span class="nav-label">AI Status</span>
-      </a>
-    </nav>
-    <div class="sidebar-footer">
-      <button class="btn btn-outline-light btn-sm" id="resetDemoBtn">🔄 Reset Demo Data</button>
-    </div>
-  </aside>
+      <!-- 4 Role Cards with 1-Click Demo & Custom Login -->
+      <div class="portal-roles" id="portalRoles">
 
-  <!-- Main Content -->
-  <div class="main-wrapper">
-    <!-- Top Header -->
-    <header class="top-header">
-      <div class="header-left">
-        <button class="hamburger" id="hamburgerBtn" aria-label="Toggle menu">
-          <span></span><span></span><span></span>
-        </button>
-        <div>
-          <h2 class="header-title">FixFirst AI</h2>
-          <p class="header-subtitle">From Reactive Complaints to Proactive Campus Care</p>
+        <!-- Student Card -->
+        <div class="portal-role-card student" data-role="student">
+          <span class="role-card-icon">🎓</span>
+          <span class="role-card-title">Student Portal</span>
+          <span class="role-card-desc">Submit complaints, track repairs, reopen unresolved issues, and rate quality.</span>
+          <div class="role-card-actions">
+            <button class="btn-portal-login student" onclick="window.openLoginModal('student')">
+              🔑 Student Login →
+            </button>
+            <button class="btn-portal-demo" onclick="window.quickDemoLogin('student1', 'Student@123', 'student')">
+              ⚡ 1-Click Demo: Aarav (Student)
+            </button>
+          </div>
         </div>
+
+        <!-- Warden Card -->
+        <div class="portal-role-card warden" data-role="warden">
+          <span class="role-card-icon">🛡️</span>
+          <span class="role-card-title">Warden Command</span>
+          <span class="role-card-desc">Oversee campus hazards, assign workers, view P1 biohazard alerts & verify repairs.</span>
+          <div class="role-card-actions">
+            <button class="btn-portal-login warden" onclick="window.openLoginModal('warden')">
+              🔑 Warden Login →
+            </button>
+            <button class="btn-portal-demo" onclick="window.quickDemoLogin('warden1', 'Warden@123', 'warden')">
+              ⚡ 1-Click Demo: Prof. Rajesh (Warden)
+            </button>
+          </div>
+        </div>
+
+        <!-- Worker Card -->
+        <div class="portal-role-card worker" data-role="worker">
+          <span class="role-card-icon">🔧</span>
+          <span class="role-card-title">Field Worker</span>
+          <span class="role-card-desc">View assigned jobs, accept/reject tasks, upload before/after photos & submit completion.</span>
+          <div class="role-card-actions">
+            <button class="btn-portal-login worker" onclick="window.openLoginModal('worker')">
+              🔑 Worker Login →
+            </button>
+            <button class="btn-portal-demo" onclick="window.quickDemoLogin('worker1', 'Worker@123', 'worker')">
+              ⚡ 1-Click Demo: Ramesh (Sanitation)
+            </button>
+          </div>
+        </div>
+
+        <!-- Admin Card -->
+        <div class="portal-role-card admin" data-role="admin">
+          <span class="role-card-icon">⚙️</span>
+          <span class="role-card-title">Admin Console</span>
+          <span class="role-card-desc">Manage personnel, assign departments, reset passwords, and audit account changes.</span>
+          <div class="role-card-actions">
+            <button class="btn-portal-login admin" onclick="window.openLoginModal('admin')">
+              🔑 Admin Login →
+            </button>
+            <button class="btn-portal-demo" onclick="window.quickDemoLogin('admin1', 'Admin@123', 'admin')">
+              ⚡ 1-Click Demo: Dr. Ananya (Admin)
+            </button>
+          </div>
+        </div>
+
       </div>
-      <div class="header-right">
-        <span class="connection-dot" id="connectionDot" title="Backend status"></span>
-        <span class="connection-label" id="connectionLabel">Checking...</span>
-        <!-- Auth chip injected here by auth.js -->
-        <div id="userAuthContainer"></div>
+
+      <!-- Guest Explore Option -->
+      <div class="portal-guest-bar">
+        <button class="btn btn-outline-light btn-sm" onclick="window.continueAsGuest()">
+          👁️ Continue as Guest / View Public Dashboard
+        </button>
       </div>
-    </header>
-
-    <!-- Page Content -->
-    <main class="content" id="mainContent">
-      <!-- Loading Spinner -->
-      <div class="page-loader" id="pageLoader">
-        <div class="spinner"></div>
-        <p>Loading...</p>
-      </div>
-
-      <!-- Dashboard Page -->
-      <section class="page" id="page-dashboard"></section>
-
-      <!-- Campus Risk Intelligence Page -->
-      <section class="page" id="page-risk-intelligence"></section>
-
-      <!-- Submit Complaint Page -->
-      <section class="page" id="page-submit"></section>
-
-      <!-- Complaints Page -->
-      <section class="page" id="page-complaints"></section>
-
-      <!-- Tickets Page -->
-      <section class="page" id="page-tickets"></section>
-
-      <!-- AI Status Page -->
-      <section class="page" id="page-ai-status"></section>
-
-      <!-- Urgency Ranked Queue Page (staff only) -->
-      <section class="page" id="page-ranked-queue"></section>
-
-      <!-- Category Arranger Page (staff only) -->
-      <section class="page" id="page-category-arranger"></section>
-    </main>
-
-    <!-- Footer -->
-    <footer class="main-footer">
-      <p>Demo Project — FixFirst AI Hackathon 2026</p>
-    </footer>
+    </div>
   </div>
 
-  <!-- Toast Container -->
-  <div class="toast-container" id="toastContainer"></div>
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       MAIN APP (shown when logged in)
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="app-shell" id="appShell" style="display:none;">
 
-  <!-- Modal -->
+    <!-- Mobile sidebar overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-logo">🛠️</span>
+        <div>
+          <h1 class="sidebar-title">FixFirst AI</h1>
+          <p class="sidebar-subtitle" id="sidebarRoleLabel">Campus Maintenance</p>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav" id="sidebarNav">
+        <!-- ── STUDENT nav ── -->
+        <a href="#dashboard" class="nav-item active" data-page="dashboard" data-roles="student,warden,worker,admin">
+          <span class="nav-icon">📊</span>
+          <span class="nav-label">Dashboard</span>
+        </a>
+        <a href="#submit" class="nav-item" data-page="submit" data-roles="student">
+          <span class="nav-icon">📝</span>
+          <span class="nav-label">Submit Complaint</span>
+        </a>
+        <a href="#complaints" class="nav-item" data-page="complaints" data-roles="student,warden,admin">
+          <span class="nav-icon">📋</span>
+          <span class="nav-label">Complaints</span>
+        </a>
+
+        <!-- ── WARDEN nav ── -->
+        <a href="#warden-assign" class="nav-item" data-page="warden-assign" data-roles="warden,admin">
+          <span class="nav-icon">👷</span>
+          <span class="nav-label">Assign Workers</span>
+        </a>
+        <a href="#ranked-queue" class="nav-item" data-page="ranked-queue" data-roles="warden,admin">
+          <span class="nav-icon">🚨</span>
+          <span class="nav-label">Urgency Queue</span>
+        </a>
+        <a href="#risk-intelligence" class="nav-item" data-page="risk-intelligence" data-roles="warden,admin">
+          <span class="nav-icon">🧭</span>
+          <span class="nav-label">Risk Intelligence</span>
+        </a>
+        <a href="#category-arranger" class="nav-item" data-page="category-arranger" data-roles="warden,admin">
+          <span class="nav-icon">📁</span>
+          <span class="nav-label">Category View</span>
+        </a>
+        <a href="#tickets" class="nav-item" data-page="tickets" data-roles="warden,admin">
+          <span class="nav-icon">🎫</span>
+          <span class="nav-label">Tickets & SLA</span>
+        </a>
+
+        <!-- ── WORKER nav ── -->
+        <a href="#worker-tasks" class="nav-item" data-page="worker-tasks" data-roles="worker">
+          <span class="nav-icon">🔧</span>
+          <span class="nav-label">My Tasks</span>
+        </a>
+        <a href="#worker-history" class="nav-item" data-page="worker-history" data-roles="worker">
+          <span class="nav-icon">📜</span>
+          <span class="nav-label">Task History</span>
+        </a>
+
+        <!-- ── ADMIN nav ── -->
+        <a href="#admin-candidates" class="nav-item" data-page="admin-candidates" data-roles="admin">
+          <span class="nav-icon">👥</span>
+          <span class="nav-label">Candidates</span>
+        </a>
+        <a href="#admin-audit" class="nav-item" data-page="admin-audit" data-roles="admin">
+          <span class="nav-icon">📑</span>
+          <span class="nav-label">Audit Logs</span>
+        </a>
+
+        <!-- ── SHARED nav ── -->
+        <a href="#ai-status" class="nav-item" data-page="ai-status" data-roles="warden,admin">
+          <span class="nav-icon">🤖</span>
+          <span class="nav-label">AI Status</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="btn btn-outline-light btn-sm" id="resetDemoBtn" style="display:none;">🔄 Reset Demo Data</button>
+        <button class="btn btn-outline-light btn-sm" id="logoutSidebarBtn">🚪 Logout</button>
+      </div>
+    </aside>
+
+    <!-- ── Main Content ──────────────────────────────────────────────────── -->
+    <div class="main-wrapper">
+
+      <!-- Top Header -->
+      <header class="top-header">
+        <div class="header-left">
+          <button class="hamburger" id="hamburgerBtn" aria-label="Toggle menu">
+            <span></span><span></span><span></span>
+          </button>
+          <div>
+            <h2 class="header-title">FixFirst AI</h2>
+            <p class="header-subtitle" id="headerSubtitle">Campus Safety & Maintenance</p>
+          </div>
+        </div>
+        <div class="header-right">
+          <!-- Dual Status Indicators: AI & Safety Engine -->
+          <div class="dual-status-group" id="dualStatusGroup">
+            <span class="status-pill status-pill-ai" id="aiStatusPill" title="AI Provider Status">
+              <span class="dot-indicator dot-yellow" id="aiDot"></span>
+              <span id="aiLabel">AI: Checking</span>
+            </span>
+            <span class="status-pill status-pill-safety" id="safetyStatusPill" title="Campus Safety Engine">
+              <span class="dot-indicator dot-green" id="safetyDot"></span>
+              <span id="safetyLabel">Safety: Active</span>
+            </span>
+          </div>
+          <!-- Legacy fallback indicators if referenced by older scripts -->
+          <span class="connection-dot" id="connectionDot" style="display:none;"></span>
+          <span class="connection-label" id="connectionLabel" style="display:none;"></span>
+          <!-- Notification bell -->
+          <div class="notif-bell-wrapper" id="notifBellWrapper" style="display:none;">
+            <button class="notif-bell" id="notifBell" aria-label="Notifications">
+              🔔
+              <span class="notif-badge" id="notifBadge" style="display:none;">0</span>
+            </button>
+            <div class="notif-dropdown" id="notifDropdown" style="display:none;">
+              <div class="notif-header">
+                <span>Notifications</span>
+                <button class="btn-link" id="markAllReadBtn">Mark all read</button>
+              </div>
+              <div class="notif-list" id="notifList">
+                <p class="notif-empty">No notifications yet</p>
+              </div>
+            </div>
+          </div>
+          <!-- Auth chip -->
+          <div id="userAuthContainer"></div>
+        </div>
+      </header>
+
+      <!-- Page Content -->
+      <main class="content" id="mainContent">
+        <!-- Loading Spinner -->
+        <div class="page-loader" id="pageLoader">
+          <div class="spinner"></div>
+          <p>Loading...</p>
+        </div>
+
+        <!-- ── All Pages ─────────────────────────────────────────────── -->
+        <section class="page active" id="page-dashboard"></section>
+        <section class="page" id="page-submit"></section>
+        <section class="page" id="page-complaints"></section>
+        <section class="page" id="page-risk-intelligence"></section>
+        <section class="page" id="page-ranked-queue"></section>
+        <section class="page" id="page-category-arranger"></section>
+        <section class="page" id="page-tickets"></section>
+        <section class="page" id="page-ai-status"></section>
+
+        <!-- ── WARDEN pages ── -->
+        <section class="page" id="page-warden-assign"></section>
+
+        <!-- ── WORKER pages ── -->
+        <section class="page" id="page-worker-tasks"></section>
+        <section class="page" id="page-worker-history"></section>
+
+        <!-- ── ADMIN pages ── -->
+        <section class="page" id="page-admin-candidates"></section>
+        <section class="page" id="page-admin-audit"></section>
+      </main>
+
+      <!-- Footer -->
+      <footer class="main-footer">
+        <p>FixFirst AI — Campus Safety & Maintenance Platform · Hackathon 2026</p>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       GLOBAL MODAL (login + detail popups)
+       ═══════════════════════════════════════════════════════════════════════ -->
   <div class="modal-overlay" id="modalOverlay">
-    <div class="modal" id="modalDialog">
+    <div class="modal modal-container" id="modalContainer">
       <div class="modal-header">
-        <h3 class="modal-title" id="modalTitle">Modal</h3>
-        <button class="modal-close" id="modalCloseBtn" aria-label="Close modal">&times;</button>
+        <h3 class="modal-title" id="modalTitle">Modal Title</h3>
+        <button class="modal-close" id="modalCloseBtn" aria-label="Close">✕</button>
       </div>
       <div class="modal-body" id="modalBody"></div>
       <div class="modal-footer" id="modalFooter"></div>
     </div>
   </div>
 
-  <!-- Scripts -->
+  <!-- Toast notifications -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- App entry point -->
   <script type="module" src="/js/app.js"></script>
 </body>
 </html>
