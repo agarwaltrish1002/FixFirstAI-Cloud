@@ -5,7 +5,7 @@
  * API keys are NEVER stored here — they remain on the backend server.
  */
 
-const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE_URL)
+export const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE_URL)
   ? import.meta.env.VITE_API_BASE_URL
   : 'https://fixfirstai-cloud.onrender.com';
 

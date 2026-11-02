@@ -11,6 +11,7 @@ import {
   updateComplaintStatus,
   generateTicket,
   analyzeComplaint,
+  API_BASE,
 } from './api.js';
 import {
   escapeHtml,
@@ -22,6 +23,16 @@ import {
   closeModal,
 } from './app.js';
 import { getAuthState } from './auth.js';
+
+/**
+ * Returns an absolute URL for an uploaded image path like "/uploads/abc.jpg".
+ * Falls back gracefully if path is null/undefined.
+ */
+function imageUrl(path) {
+  if (!path) return null;
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  return `${API_BASE}${path}`;
+}
 
 let currentFilters = {};
 
@@ -124,6 +135,13 @@ async function fetchAndRender() {
         <strong>${escapeHtml(c.title)}</strong>
         ${c.is_sensitive_hygiene ? '<span class="sensitive-badge">🔒 Sensitive</span>' : ''}
       </td>
+      <td data-label="Photo">
+        ${c.image_path
+          ? `<img src="${imageUrl(c.image_path)}" alt="Complaint photo" class="complaint-thumb"
+               onerror="this.style.display='none';" />`
+          : '<span style="color:var(--gray-300);font-size:11px;">—</span>'
+        }
+      </td>
       <td data-label="Location">${escapeHtml(c.location)}${c.room_number ? ' (' + escapeHtml(c.room_number) + ')' : ''}</td>
       <td data-label="Category">${escapeHtml(c.category)}</td>
       <td data-label="Priority">${priorityBadge(c.priority)}</td>
@@ -140,6 +158,7 @@ async function fetchAndRender() {
           <tr>
             <th>ID</th>
             <th>Title</th>
+            <th>Photo</th>
             <th>Location</th>
             <th>Category</th>
             <th>Priority</th>
@@ -230,6 +249,22 @@ export async function showComplaintDetail(id) {
       <div class="detail-label">Description</div>
       <div class="detail-value">${escapeHtml(c.description)}</div>
     </div>
+
+    ${imageUrl(c.image_path) ? `
+    <div class="detail-item mb-24">
+      <div class="detail-label">📷 Attached Photo</div>
+      <div class="detail-value complaint-photo-wrap">
+        <a href="${imageUrl(c.image_path)}" target="_blank" rel="noopener" title="Open full image">
+          <img
+            src="${imageUrl(c.image_path)}"
+            alt="Complaint photo"
+            class="complaint-photo-full"
+            onerror="this.closest('.complaint-photo-wrap').innerHTML='<span style=&quot;color:var(--gray-400);font-size:13px;&quot;>⚠️ Photo could not be loaded.</span>';"
+          />
+        </a>
+        <p style="font-size:11px;color:var(--gray-400);margin-top:4px;">Click image to open full-size in a new tab.</p>
+      </div>
+    </div>` : ''}
 
     <h4 class="section-title">Priority & Safety Intelligence ${isRuleBased ? '<span class="ai-tag rule-based">Rule-Based</span>' : '<span class="ai-tag ai-based">AI Analyzed</span>'}</h4>
 
