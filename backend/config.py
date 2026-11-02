@@ -25,12 +25,36 @@ FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", 5174))
 SECRET_KEY = os.getenv("SECRET_KEY", "fixfirst-ai-smart-campus-secret-key-2026-v2")
 TOKEN_EXPIRATION_MINUTES = int(os.getenv("TOKEN_EXPIRATION_MINUTES", 60 * 24))  # 24 hours
 
-# ---------------------------------------------------------------------------
-# AI Settings (Gemini, Ollama Cloud, Local Ollama)
-# ---------------------------------------------------------------------------
-AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
+# Role-Based Access Control Roles
+USER_ROLES = ["student", "warden", "worker", "admin"]
 
-# Gemini settings
+# Campus Areas for maintenance assignment and coverage
+CAMPUS_AREAS = [
+    "Hostel Block A",
+    "Hostel Block B",
+    "Hostel Block C",
+    "Academic Block 1",
+    "Academic Block 2",
+    "Central Library",
+    "Student Activity Center (SAC)",
+    "Dining Hall / Mess",
+    "Sports Complex",
+    "Faculty Housing",
+    "Main Administration",
+]
+
+# ---------------------------------------------------------------------------
+# AI Settings — OpenAI (primary), Gemini (fallback), Ollama Cloud, Local Ollama
+# ---------------------------------------------------------------------------
+# Options: "openai" | "gemini" | "ollama_cloud" | "ollama_local"
+AI_PROVIDER = os.getenv("AI_PROVIDER", "openai").lower()
+
+# OpenAI settings (primary AI provider)
+# IMPORTANT: OPENAI_API_KEY must be set via environment variable — never hardcode here.
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")  # Set via Render/Vercel env
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1")
+
+# Gemini settings (fallback)
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
@@ -45,10 +69,13 @@ OLLAMA_MODEL = os.getenv(
     "gemma4:31b" if os.getenv("AI_PROVIDER", "").lower() == "ollama_cloud" else "qwen2.5-coder:7b"
 )
 
+# Candidate model placeholder for testing pipeline
+CANDIDATE_MODEL_NAME = "google/flan-t5-base"
+
 # ---------------------------------------------------------------------------
 # File-upload constraints
 # ---------------------------------------------------------------------------
-MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB for high-res repair photos
 ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp"]
 
 # ---------------------------------------------------------------------------

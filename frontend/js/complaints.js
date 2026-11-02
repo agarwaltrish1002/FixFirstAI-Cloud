@@ -1,19 +1,36 @@
 /**
  * FixFirst AI — Complaints Page
  * ===============================
- * List, search, filter, sort complaints. View complaint detail with AI analysis.
+ * List, search, filter, sort complaints. View complaint detail with AI analysis,
+ * worker assignment (Warden), and reopen/feedback (Student).
  */
 
-import { getComplaints, getComplaint, updateComplaintStatus, generateTicket, analyzeComplaint } from './api.js';
-import { escapeHtml, priorityBadge, statusBadge, formatDate, showToast, openModal, closeModal } from './app.js';
+import {
+  getComplaints,
+  getComplaint,
+  updateComplaintStatus,
+  generateTicket,
+  analyzeComplaint,
+} from './api.js';
+import {
+  escapeHtml,
+  priorityBadge,
+  statusBadge,
+  formatDate,
+  showToast,
+  openModal,
+  closeModal,
+} from './app.js';
+import { getAuthState } from './auth.js';
 
 let currentFilters = {};
 
 export async function loadComplaints() {
   const page = document.getElementById('page-complaints');
+  if (!page) return;
 
   page.innerHTML = `
-    <h2 class="mb-24" style="font-size:22px;">📋 Complaints</h2>
+    <h2 class="mb-24" style="font-size:22px;">📋 Campus Complaints</h2>
 
     <div class="toolbar no-print">
       <div class="search-box">
@@ -44,7 +61,7 @@ export async function loadComplaints() {
     </div>
 
     <div class="card">
-      <div id="complaintsTable"><p style="color:var(--gray-500)">Loading...</p></div>
+      <div id="complaintsTable"><p style="color:var(--gray-500)">Loading complaints...</p></div>
     </div>
   `;
 
@@ -81,6 +98,7 @@ export async function loadComplaints() {
 
 async function fetchAndRender() {
   const container = document.getElementById('complaintsTable');
+  if (!container) return;
   const result = await getComplaints({ ...currentFilters, per_page: 50 });
 
   if (!result) {
@@ -101,13 +119,16 @@ async function fetchAndRender() {
 
   const rows = result.complaints.map(c => `
     <tr class="clickable" onclick="showComplaintDetail('${escapeHtml(c.id)}')">
-      ${c.urgency_rank ? `<td data-label="#"><span class="urgency-rank-badge ${c.urgency_rank <= 3 ? (c.urgency_rank === 1 ? 'rank-top' : 'rank-high') : ''}">#${c.urgency_rank}</span></td>` : '<td data-label="#"></td>'}
-      <td data-label="ID"><strong>${escapeHtml(c.id)}</strong>${c.is_demo ? ' <span style="font-size:10px;color:var(--gray-500);">(demo)</span>' : ''}</td>
-      <td data-label="Title" class="truncate" style="max-width:220px;">${escapeHtml(c.title)}</td>
-      <td data-label="Location">${escapeHtml(c.location)}</td>
+      <td data-label="ID"><code>${escapeHtml(c.id)}</code></td>
+      <td data-label="Title">
+        <strong>${escapeHtml(c.title)}</strong>
+        ${c.is_sensitive_hygiene ? '<span class="sensitive-badge">🔒 Sensitive</span>' : ''}
+      </td>
+      <td data-label="Location">${escapeHtml(c.location)}${c.room_number ? ' (' + escapeHtml(c.room_number) + ')' : ''}</td>
       <td data-label="Category">${escapeHtml(c.category)}</td>
       <td data-label="Priority">${priorityBadge(c.priority)}</td>
       <td data-label="Status">${statusBadge(c.status)}</td>
+      <td data-label="Assigned Worker">${escapeHtml(c.assigned_worker_name || '—')}</td>
       <td data-label="Date">${formatDate(c.created_at)}</td>
     </tr>
   `).join('');
@@ -117,42 +138,53 @@ async function fetchAndRender() {
       <table class="table-mobile-cards">
         <thead>
           <tr>
-            <th>#</th><th>ID</th><th>Title</th><th>Location</th><th>Category</th><th>Priority</th><th>Status</th><th>Date</th>
+            <th>ID</th>
+            <th>Title</th>
+            <th>Location</th>
+            <th>Category</th>
+            <th>Priority</th>
+            <th>Status</th>
+            <th>Technician</th>
+            <th>Date</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <p style="margin-top:12px;font-size:13px;color:var(--gray-500);">Showing ${result.complaints.length} of ${result.total} complaints</p>
+    <div style="font-size:12px;color:var(--gray-500);margin-top:12px;">
+      Showing ${result.complaints.length} of ${result.total || result.complaints.length} complaints
+    </div>
   `;
 }
 
 // ---------------------------------------------------------------------------
-// Complaint Detail View (shown in modal)
+// Show Complaint Detail Modal
 // ---------------------------------------------------------------------------
 
 export async function showComplaintDetail(id) {
-  openModal('Loading...', '<div class="text-center"><div class="spinner" style="margin:20px auto;"></div></div>');
-
   const c = await getComplaint(id);
   if (!c) {
-    openModal('Error', '<div class="alert alert-danger">Could not load complaint details.</div>');
+    showToast('Could not load complaint details.', 'error');
     return;
   }
 
+  const auth = getAuthState();
+  const role = auth.role ? auth.role.toLowerCase() : 'student';
+  const isWarden = role === 'warden' || role === 'teacher' || role === 'admin';
+  const isStudent = role === 'student';
+
   const ai = c.ai_analysis || {};
-  const ruleEngine = ai.rule_engine || {};
   const override = ai.priority_override || {};
   const isRuleBased = ai.source === 'rule-engine-fallback' || override.source === 'rule-based';
 
   let safetyWarning = '';
-  if (c.priority === 'Critical') {
+  if (c.priority?.includes('P1') || c.priority?.includes('Critical')) {
     safetyWarning = `
       <div class="alert alert-danger mb-16">
         <span class="alert-icon">🚨</span>
         <div>
-          <strong>Potential safety hazard detected.</strong><br>
-          Please keep people away from the affected area and notify authorized campus staff immediately.
+          <strong>Potential Critical Hazard Detected.</strong><br>
+          ${c.is_sensitive_hygiene ? 'Chemical disinfection and biohazard handling required immediately.' : 'Immediate electrical isolation or evacuation procedure applies.'}
         </div>
       </div>
     `;
@@ -165,7 +197,7 @@ export async function showComplaintDetail(id) {
     <div class="detail-grid mb-24">
       <div class="detail-item">
         <div class="detail-label">Complaint ID</div>
-        <div class="detail-value">${escapeHtml(c.id)} ${c.is_demo ? '<span class="ai-tag rule-based">Demo Data</span>' : ''}</div>
+        <div class="detail-value"><code>${escapeHtml(c.id)}</code> ${c.is_demo ? '<span class="ai-tag rule-based">Demo Data</span>' : ''}</div>
       </div>
       <div class="detail-item">
         <div class="detail-label">Status</div>
@@ -184,8 +216,8 @@ export async function showComplaintDetail(id) {
         <div class="detail-value">${escapeHtml(c.category)}</div>
       </div>
       <div class="detail-item">
-        <div class="detail-label">Date</div>
-        <div class="detail-value">${formatDate(c.created_at)}</div>
+        <div class="detail-label">Assigned Technician</div>
+        <div class="detail-value">${escapeHtml(c.assigned_worker_name || 'Pending assignment')}</div>
       </div>
     </div>
 
@@ -199,7 +231,7 @@ export async function showComplaintDetail(id) {
       <div class="detail-value">${escapeHtml(c.description)}</div>
     </div>
 
-    <h4 class="section-title">Priority & Analysis ${isRuleBased ? '<span class="ai-tag rule-based">Rule-Based</span>' : '<span class="ai-tag ai-based">AI Analyzed</span>'}</h4>
+    <h4 class="section-title">Priority & Safety Intelligence ${isRuleBased ? '<span class="ai-tag rule-based">Rule-Based</span>' : '<span class="ai-tag ai-based">AI Analyzed</span>'}</h4>
 
     <div class="detail-grid mb-16">
       <div class="detail-item">
@@ -207,14 +239,14 @@ export async function showComplaintDetail(id) {
         <div class="detail-value">${priorityBadge(c.priority)}</div>
       </div>
       <div class="detail-item">
-        <div class="detail-label">Assigned Department</div>
+        <div class="detail-label">Responsible Department</div>
         <div class="detail-value">${escapeHtml(c.assigned_department || '—')}</div>
       </div>
     </div>
 
     <div class="ai-analysis-section mb-16">
-      <h4>💬 Why this priority?</h4>
-      <p style="margin-top:8px;">${escapeHtml(c.priority_reason || ai.explanation || 'No explanation available.')}</p>
+      <h4>💬 Assessment Reason</h4>
+      <p style="margin-top:8px;">${escapeHtml(c.priority_reason || ai.explanation || ai.reason || 'No explanation available.')}</p>
       ${override.override_applied ? `<p style="margin-top:8px;font-weight:600;color:var(--red);">⚡ Safety override applied: ${escapeHtml(override.explanation || '')}</p>` : ''}
     </div>
 
@@ -224,87 +256,97 @@ export async function showComplaintDetail(id) {
       <div class="detail-value">${escapeHtml(ai.summary)}</div>
     </div>` : ''}
 
-    ${ai.risk_indicators && ai.risk_indicators.length > 0 ? `
-    <div class="detail-item mb-8">
-      <div class="detail-label">Risk Indicators</div>
-      <div class="detail-value">
-        <ul style="margin:4px 0 0 16px;">
-          ${ai.risk_indicators.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
-        </ul>
-      </div>
-    </div>` : ''}
-
-    ${ai.suggested_action ? `
+    ${ai.suggested_action || ai.recommended_action ? `
     <div class="detail-item mb-16">
       <div class="detail-label">Recommended Action</div>
-      <div class="detail-value" style="font-weight:500;">${escapeHtml(ai.suggested_action)}</div>
+      <div class="detail-value" style="font-weight:500;">${escapeHtml(ai.suggested_action || ai.recommended_action)}</div>
     </div>` : ''}
 
-    <h4 class="section-title mt-24">Update Status</h4>
-    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-      <select class="filter-select" id="statusSelect">
-        ${['Pending', 'Assigned', 'In Progress', 'Resolved'].map(s =>
-          `<option value="${s}" ${c.status === s ? 'selected' : ''}>${s}</option>`
-        ).join('')}
-      </select>
-      <button class="btn btn-primary btn-sm" id="updateStatusBtn">Update Status</button>
-      <button class="btn btn-secondary btn-sm" id="reanalyzeBtn">🤖 Re-Analyze with AI</button>
-      <button class="btn btn-primary btn-sm" id="genTicketBtn">🎫 Generate Ticket</button>
-    </div>
+    <!-- Feedback & Reopen if Student & Resolved -->
+    ${isStudent && c.status === 'Resolved' ? `
+      <div class="card mb-16" style="background:#f0fdf4;border:1px solid #bbf7d0;">
+        <h4 style="font-size:14px;color:#15803d;margin-bottom:8px;">Resolution Feedback</h4>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-sm btn-primary" onclick="window.promptFeedback('${escapeHtml(c.id)}')">⭐ Rate Resolution Quality</button>
+          <button class="btn btn-sm btn-danger" onclick="window.promptReopen('${escapeHtml(c.id)}')">🔄 Reopen Complaint</button>
+        </div>
+      </div>
+    ` : ''}
+
+    <!-- Warden Operations -->
+    ${isWarden ? `
+      <h4 class="section-title mt-24">Warden Operations</h4>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+        <button class="btn btn-primary btn-sm" onclick="window.openAssignModal('${escapeHtml(c.id)}', '${escapeHtml(c.title)}', '${escapeHtml(c.category)}')">
+          👷 Assign Worker
+        </button>
+        <button class="btn btn-secondary btn-sm" id="genTicketBtn">🎫 Generate Ticket</button>
+        <button class="btn btn-secondary btn-sm" id="reanalyzeBtn">🤖 Re-Analyze with AI</button>
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+        <label style="font-size:12px;font-weight:600;">Manual Status Override:</label>
+        <select class="filter-select" id="statusSelect" style="max-width:160px;">
+          ${['Pending', 'Assigned', 'In Progress', 'Resolved'].map(s =>
+            `<option value="${s}" ${c.status === s ? 'selected' : ''}>${s}</option>`
+          ).join('')}
+        </select>
+        <button class="btn btn-secondary btn-sm" id="updateStatusBtn">Update</button>
+      </div>
+    ` : ''}
   `;
 
   openModal(`Complaint ${c.id}`, body);
 
-  // Update status button
-  document.getElementById('updateStatusBtn').addEventListener('click', async () => {
-    const newStatus = document.getElementById('statusSelect').value;
-    try {
-      await updateComplaintStatus(c.id, newStatus);
-      showToast(`Status updated to "${newStatus}"`, 'success');
-      closeModal();
-      if (document.getElementById('page-complaints').classList.contains('active')) fetchAndRender();
-    } catch (err) {
-      showToast('Failed to update: ' + err.message, 'error');
-    }
-  });
+  // Wire buttons if present
+  const updateBtn = document.getElementById('updateStatusBtn');
+  if (updateBtn) {
+    updateBtn.addEventListener('click', async () => {
+      const newStatus = document.getElementById('statusSelect').value;
+      try {
+        await updateComplaintStatus(c.id, newStatus);
+        showToast(`Status updated to "${newStatus}"`, 'success');
+        closeModal();
+        if (document.getElementById('page-complaints')?.classList.contains('active')) fetchAndRender();
+      } catch (err) {
+        showToast('Failed to update: ' + err.message, 'error');
+      }
+    });
+  }
 
-  // Re-analyze button
-  document.getElementById('reanalyzeBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('reanalyzeBtn');
-    btn.classList.add('btn-loading');
-    btn.disabled = true;
-    try {
-      const updated = await analyzeComplaint(c.id);
-      showToast(`Re-analyzed! New priority: ${updated.priority}`, 'success');
-      closeModal();
-      showComplaintDetail(c.id);
-    } catch (err) {
-      showToast('Re-analysis failed: ' + err.message, 'error');
-    } finally {
-      btn.classList.remove('btn-loading');
-      btn.disabled = false;
-    }
-  });
+  const reanalyzeBtn = document.getElementById('reanalyzeBtn');
+  if (reanalyzeBtn) {
+    reanalyzeBtn.addEventListener('click', async () => {
+      reanalyzeBtn.disabled = true;
+      try {
+        const updated = await analyzeComplaint(c.id);
+        showToast(`Re-analyzed! Priority: ${updated.priority}`, 'success');
+        closeModal();
+        showComplaintDetail(c.id);
+      } catch (err) {
+        showToast('Re-analysis failed: ' + err.message, 'error');
+      } finally {
+        reanalyzeBtn.disabled = false;
+      }
+    });
+  }
 
-  // Generate ticket button
-  document.getElementById('genTicketBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('genTicketBtn');
-    btn.classList.add('btn-loading');
-    btn.disabled = true;
-    try {
-      const ticket = await generateTicket(c.id);
-      showToast(`Ticket ${ticket.id} generated!`, 'success');
-      closeModal();
-
-      // Show ticket detail
-      showTicketInModal(ticket);
-    } catch (err) {
-      showToast('Ticket generation failed: ' + err.message, 'error');
-    } finally {
-      btn.classList.remove('btn-loading');
-      btn.disabled = false;
-    }
-  });
+  const genTicketBtn = document.getElementById('genTicketBtn');
+  if (genTicketBtn) {
+    genTicketBtn.addEventListener('click', async () => {
+      genTicketBtn.disabled = true;
+      try {
+        const ticket = await generateTicket(c.id);
+        showToast(`Ticket ${ticket.id} generated!`, 'success');
+        closeModal();
+        showTicketInModal(ticket);
+      } catch (err) {
+        showToast('Ticket generation failed: ' + err.message, 'error');
+      } finally {
+        genTicketBtn.disabled = false;
+      }
+    });
+  }
 }
 
 function showTicketInModal(t) {
@@ -317,62 +359,17 @@ function showTicketInModal(t) {
       <span class="alert-icon">🔔</span>
       <div>
         <strong>Demo ticket generated locally.</strong><br>
-        No real campus department has been contacted.
+        Department notified.
       </div>
     </div>
-
     <div class="detail-grid mb-16">
-      <div class="detail-item">
-        <div class="detail-label">Ticket ID</div>
-        <div class="detail-value"><strong>${escapeHtml(t.id)}</strong></div>
-      </div>
-      <div class="detail-item">
-        <div class="detail-label">Complaint ID</div>
-        <div class="detail-value">${escapeHtml(t.complaint_id)}</div>
-      </div>
-      <div class="detail-item">
-        <div class="detail-label">Location</div>
-        <div class="detail-value">${escapeHtml(t.location)}</div>
-      </div>
-      <div class="detail-item">
-        <div class="detail-label">Priority</div>
-        <div class="detail-value">${priorityBadge(t.priority)}</div>
-      </div>
-      <div class="detail-item">
-        <div class="detail-label">Department</div>
-        <div class="detail-value">${escapeHtml(t.department)}</div>
-      </div>
-      <div class="detail-item">
-        <div class="detail-label">Status</div>
-        <div class="detail-value">${statusBadge(t.status)}</div>
-      </div>
-    </div>
-
-    <div class="detail-item mb-8">
-      <div class="detail-label">Issue Summary</div>
-      <div class="detail-value">${escapeHtml(t.issue_summary)}</div>
-    </div>
-
-    <div class="detail-item mb-8">
-      <div class="detail-label">Priority Reason</div>
-      <div class="detail-value">${escapeHtml(t.priority_reason)}</div>
-    </div>
-
-    <div class="detail-item mb-16">
-      <div class="detail-label">Recommended Action</div>
-      <div class="detail-value" style="font-weight:500;">${escapeHtml(t.recommended_action)}</div>
-    </div>
-
-    <div class="detail-item">
-      <div class="detail-label">Created</div>
-      <div class="detail-value">${formatDate(t.created_at)}</div>
+      <div class="detail-item"><div class="detail-label">Ticket ID</div><div class="detail-value"><strong>${escapeHtml(t.id)}</strong></div></div>
+      <div class="detail-item"><div class="detail-label">Priority</div><div class="detail-value">${priorityBadge(t.priority)}</div></div>
+      <div class="detail-item"><div class="detail-label">Department</div><div class="detail-value">${escapeHtml(t.department)}</div></div>
+      <div class="detail-item"><div class="detail-label">Status</div><div class="detail-value">${statusBadge(t.status)}</div></div>
     </div>
   `;
-
-  const footer = `<button class="btn btn-secondary btn-sm" onclick="window.print()">🖨️ Print Ticket</button>`;
-
-  openModal(`Maintenance Ticket — ${t.id}`, body, footer);
+  openModal(`Maintenance Ticket — ${t.id}`, body);
 }
 
-// Export for tickets page to use
 window._showTicketModal = showTicketInModal;

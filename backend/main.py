@@ -41,6 +41,24 @@ from backend.database import (
     _next_ticket_id,
     get_user_by_username,
     get_user_by_id,
+    get_all_candidates,
+    create_candidate,
+    update_candidate,
+    reset_candidate_password,
+    set_candidate_status,
+    log_audit_event,
+    get_audit_logs,
+    get_all_workers,
+    assign_complaint_to_worker,
+    get_worker_tasks,
+    update_worker_task_status,
+    warden_verify_repair,
+    student_reopen_complaint,
+    submit_complaint_feedback,
+    create_notification,
+    get_user_notifications,
+    mark_notification_read,
+    mark_all_notifications_read,
 )
 from backend.auth import (
     hash_password,
@@ -50,6 +68,7 @@ from backend.auth import (
     get_current_user,
     get_current_user_optional,
     require_roles,
+    generate_temporary_password,
 )
 from backend.validation import validate_complaint_content
 from backend.ranking_engine import calculate_complaint_ranking, rank_all_complaints
@@ -92,6 +111,7 @@ allowed_origins = [
     f"http://127.0.0.1:{FRONTEND_PORT}",
     f"http://localhost:{FRONTEND_PORT}",
     "https://fix-first-ai-cloud-9so6w00j9-syzygy7.vercel.app",
+    "https://fix-first-ai-cloud.vercel.app",
 ]
 
 
@@ -121,9 +141,81 @@ def _sanitise(value: str) -> str:
 
 
 class LoginRequest(BaseModel):
-    """Payload for user authentication."""
+    """Payload for user authentication with optional role enforcement."""
     username: str = Field(..., min_length=2, max_length=50)
     password: str = Field(..., min_length=3, max_length=100)
+    role: Optional[str] = Field(default=None, max_length=50)
+
+
+class CandidateCreate(BaseModel):
+    """Payload for creating a new campus candidate (Admin only)."""
+    full_name: str = Field(..., min_length=2, max_length=100)
+    email: str = Field(..., min_length=5, max_length=100)
+    phone: Optional[str] = Field(default="", max_length=30)
+    username: str = Field(..., min_length=3, max_length=50)
+    role: str = Field(..., min_length=3, max_length=30)
+    department: Optional[str] = Field(default="", max_length=100)
+    assigned_area: Optional[str] = Field(default="", max_length=100)
+    password: Optional[str] = Field(default=None, max_length=100)
+
+
+class CandidateUpdate(BaseModel):
+    """Payload for updating candidate details."""
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    role: Optional[str] = None
+    department: Optional[str] = None
+    assigned_area: Optional[str] = None
+    account_status: Optional[str] = None
+
+
+class CandidateResetPassword(BaseModel):
+    """Payload for resetting candidate password."""
+    new_password: Optional[str] = None
+
+
+class CandidateStatusUpdate(BaseModel):
+    """Payload for activating / deactivating a candidate."""
+    account_status: str
+
+
+class WorkerAssign(BaseModel):
+    """Payload for assigning a complaint to a maintenance worker."""
+    complaint_id: str
+    worker_id: str
+    instructions: Optional[str] = None
+
+
+class WorkerTaskResponse(BaseModel):
+    """Payload for worker accepting/rejecting a task."""
+    action: str
+    rejection_reason: Optional[str] = None
+
+
+class WorkerStatusUpdate(BaseModel):
+    """Payload for updating worker task status and evidence."""
+    status: str
+    worker_notes: Optional[str] = None
+    before_photo: Optional[str] = None
+    after_photo: Optional[str] = None
+
+
+class WardenVerify(BaseModel):
+    """Payload for warden verifying completed repair or reopening."""
+    action: str
+    feedback: Optional[str] = None
+
+
+class StudentReopen(BaseModel):
+    """Payload for student reopening an unresolved complaint."""
+    reason: str = Field(..., min_length=3, max_length=1000)
+
+
+class StudentFeedback(BaseModel):
+    """Payload for student rating resolution quality."""
+    rating: int = Field(..., ge=1, le=5)
+    comment: Optional[str] = Field(default="", max_length=1000)
 
 
 class RecommendRequest(BaseModel):
@@ -241,7 +333,7 @@ async def ai_status():
 
 @app.post("/api/auth/login")
 async def login(data: LoginRequest):
-    """Authenticate student, warden, or teacher with PBKDF2 password hashing."""
+    """Authenticate user with Argon2id password hashing and role verification."""
     user = get_user_by_username(data.username.strip().lower())
     if not user or not verify_password(data.password, user["password_hash"], user["salt"]):
         raise HTTPException(
@@ -249,11 +341,39 @@ async def login(data: LoginRequest):
             detail="Invalid username or password. Please verify your credentials.",
         )
 
+    if user.get("account_status") == "Inactive":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is currently inactive. Please contact the Campus Administrator.",
+        )
+
+    user_role = user["role"].lower()
+    # Normalize teacher to warden
+    effective_role = "warden" if user_role == "teacher" else user_role
+
+    # Enforce role-specific login if provided
+    if data.role:
+        expected_role = data.role.strip().lower()
+        if expected_role != effective_role and expected_role != user_role:
+            role_names = {
+                "student": "Student Login",
+                "warden": "Warden Login",
+                "worker": "Worker Login",
+                "admin": "Admin Login",
+            }
+            target_portal = role_names.get(effective_role, f"{effective_role.title()} Login")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"This account is registered as '{effective_role.upper()}'. Please use the {target_portal} portal.",
+            )
+
     token = create_access_token(
         user_id=user["id"],
         username=user["username"],
-        role=user["role"],
+        role=effective_role,
         full_name=user["full_name"],
+        department=user.get("department_or_hostel") or "",
+        assigned_area=user.get("assigned_area") or "",
     )
     return {
         "access_token": token,
@@ -261,9 +381,11 @@ async def login(data: LoginRequest):
         "user": {
             "id": user["id"],
             "username": user["username"],
-            "role": user["role"],
+            "role": effective_role,
             "full_name": user["full_name"],
             "department_or_hostel": user.get("department_or_hostel"),
+            "assigned_area": user.get("assigned_area"),
+            "is_temporary_password": bool(user.get("is_temporary_password", 0)),
         },
     }
 
@@ -276,36 +398,50 @@ async def get_my_profile(current_user: dict[str, Any] = Depends(get_current_user
 
 @app.get("/api/auth/demo-users")
 async def get_demo_users():
-    """Return available demo accounts for seamless one-click role switching."""
+    """Return available demo accounts across all 4 roles."""
     return {
         "accounts": [
             {
                 "username": "student1",
                 "role": "student",
                 "full_name": "Aarav Sharma",
-                "label": "Student (Hostel H1 - Rm 204)",
+                "label": "Student (Hostel Block B - Rm 204)",
                 "password": "Student@123",
             },
             {
                 "username": "student2",
                 "role": "student",
                 "full_name": "Diya Patel",
-                "label": "Student (Hostel H2 - Rm 112)",
+                "label": "Student (Hostel Block A - Rm 112)",
                 "password": "Student@123",
             },
             {
                 "username": "warden1",
                 "role": "warden",
-                "full_name": "Rajesh Kumar",
+                "full_name": "Prof. Rajesh Verma",
                 "label": "Chief Hostel Warden",
                 "password": "Warden@123",
             },
             {
-                "username": "teacher1",
-                "role": "teacher",
-                "full_name": "Dr. Sunita Rao",
-                "label": "Faculty / Maintenance Committee",
-                "password": "Teacher@123",
+                "username": "worker1",
+                "role": "worker",
+                "full_name": "Ramesh Kumar",
+                "label": "Sanitation & Bio-Hazard Specialist",
+                "password": "Worker@123",
+            },
+            {
+                "username": "worker2",
+                "role": "worker",
+                "full_name": "Suresh Sharma",
+                "label": "Electrical & Power Technician",
+                "password": "Worker@123",
+            },
+            {
+                "username": "admin1",
+                "role": "admin",
+                "full_name": "Dr. Ananya Sen (Chief Estate Officer)",
+                "label": "Estate & System Admin",
+                "password": "Admin@123",
             },
         ]
     }
@@ -708,15 +844,19 @@ async def create_complaint(
 
         dept = CATEGORY_DEPARTMENTS.get(final_category, rule_result.get("department", "General Maintenance Services"))
 
-        # Step 5: Save
+        # Step 5: Detect Sensitive Menstrual Hygiene & Sanitation Risks
+        is_sensitive = 1 if rule_result.get("is_sensitive_hygiene") else 0
+
+        # Step 6: Save
         conn.execute(
             """
             INSERT INTO complaints
                 (id, student_id, student_name, location, room_number, title, description,
                  category, image_path, status, priority, priority_reason,
                  ai_analysis, assigned_department, created_at, updated_at,
-                 is_demo, ranking_score, urgency_rank, ranking_reason, affected_scope, damage_risk)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 is_demo, ranking_score, urgency_rank, ranking_reason, affected_scope, damage_risk,
+                 is_sensitive_hygiene)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 complaint_id,
@@ -741,8 +881,30 @@ async def create_complaint(
                 ranking_reason,
                 affected_scope,
                 damage_risk,
+                is_sensitive,
             ),
         )
+
+        # Trigger real-time notifications for P1 Critical & Urgent Sanitation
+        if final_priority.startswith("P1"):
+            if is_sensitive:
+                create_notification(
+                    notif_type="critical_sanitation",
+                    title="URGENT: Sanitation / Biohazard Hazard",
+                    message=f"P1 Urgent Sanitation complaint received at {data.location}: {data.title}",
+                    complaint_id=complaint_id,
+                    role_target="warden",
+                    conn=conn,
+                )
+            else:
+                create_notification(
+                    notif_type="critical_alert",
+                    title="CRITICAL SAFETY HAZARD DETECTED",
+                    message=f"P1 Critical hazard reported at {data.location}: {data.title}",
+                    complaint_id=complaint_id,
+                    role_target="warden",
+                )
+
         conn.commit()
 
         # Update ranks for all active complaints
@@ -1142,5 +1304,410 @@ async def serve_upload(filename: str):
 
     return FileResponse(file_path)
 
+# ═══════════════════════════════════════════════════════════════════════════
+# ADMIN: CANDIDATE & ACCESS MANAGEMENT
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/admin/candidates")
+async def list_candidates(
+    role: Optional[str] = None,
+    status: Optional[str] = None,
+    department: Optional[str] = None,
+    search: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(require_roles(["admin"])),
+):
+    """Admin endpoint: List all campus candidate and user accounts."""
+    candidates = get_all_candidates(role=role, status=status, department=department, search=search)
+    return {"candidates": candidates, "total": len(candidates)}
+
+
+@app.post("/api/admin/candidates")
+async def create_new_candidate(
+    data: CandidateCreate,
+    current_user: Dict[str, Any] = Depends(require_roles(["admin"])),
+):
+    """Admin endpoint: Register a new candidate account with Argon2id password."""
+    password = data.password or generate_temporary_password(12)
+    try:
+        user = create_candidate(
+            full_name=data.full_name,
+            email=data.email,
+            phone=data.phone or "",
+            username=data.username.strip().lower(),
+            role=data.role.strip().lower(),
+            department=data.department or "",
+            assigned_area=data.assigned_area or "",
+            password=password,
+            is_temporary_password=True,
+        )
+        log_audit_event(
+            admin_id=current_user["sub"],
+            admin_name=current_user.get("full_name", "Admin"),
+            action="create_candidate",
+            target_user_id=user["id"],
+            target_username=user["username"],
+            details=f"Created candidate '{user['full_name']}' with role '{user['role']}'.",
+        )
+        return {
+            "message": "Candidate created successfully.",
+            "candidate": user,
+            "temporary_password": password,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.put("/api/admin/candidates/{candidate_id}")
+async def edit_candidate(
+    candidate_id: str,
+    data: CandidateUpdate,
+    current_user: Dict[str, Any] = Depends(require_roles(["admin"])),
+):
+    """Admin endpoint: Update candidate profile, role, or area assignments."""
+    updated = update_candidate(
+        user_id=candidate_id,
+        full_name=data.full_name,
+        email=data.email,
+        phone=data.phone,
+        role=data.role,
+        department=data.department,
+        assigned_area=data.assigned_area,
+        account_status=data.account_status,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+
+    log_audit_event(
+        admin_id=current_user["sub"],
+        admin_name=current_user.get("full_name", "Admin"),
+        action="update_candidate",
+        target_user_id=candidate_id,
+        target_username=updated["username"],
+        details=f"Updated candidate details for '{updated['username']}'.",
+    )
+    return {"message": "Candidate updated successfully.", "candidate": updated}
+
+
+@app.post("/api/admin/candidates/{candidate_id}/reset-password")
+async def reset_candidate_pwd(
+    candidate_id: str,
+    data: CandidateResetPassword,
+    current_user: Dict[str, Any] = Depends(require_roles(["admin"])),
+):
+    """Admin endpoint: Securely reset candidate password."""
+    target_user = get_user_by_id(candidate_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+
+    new_pwd = data.new_password or generate_temporary_password(12)
+    reset_candidate_password(candidate_id, new_pwd, is_temporary=True)
+
+    log_audit_event(
+        admin_id=current_user["sub"],
+        admin_name=current_user.get("full_name", "Admin"),
+        action="reset_password",
+        target_user_id=candidate_id,
+        target_username=target_user["username"],
+        details=f"Reset password for '{target_user['username']}'.",
+    )
+    return {
+        "message": "Password reset successfully.",
+        "temporary_password": new_pwd,
+        "username": target_user["username"],
+    }
+
+
+@app.put("/api/admin/candidates/{candidate_id}/status")
+async def toggle_candidate_status(
+    candidate_id: str,
+    data: CandidateStatusUpdate,
+    current_user: Dict[str, Any] = Depends(require_roles(["admin"])),
+):
+    """Admin endpoint: Activate or Deactivate candidate account."""
+    target_user = get_user_by_id(candidate_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+
+    set_candidate_status(candidate_id, data.account_status)
+    log_audit_event(
+        admin_id=current_user["sub"],
+        admin_name=current_user.get("full_name", "Admin"),
+        action="toggle_status",
+        target_user_id=candidate_id,
+        target_username=target_user["username"],
+        details=f"Set account status of '{target_user['username']}' to '{data.account_status}'.",
+    )
+    return {"message": f"Candidate status set to {data.account_status}."}
+
+
+@app.get("/api/admin/audit-logs")
+async def list_audit_logs(
+    limit: int = 100,
+    current_user: Dict[str, Any] = Depends(require_roles(["admin"])),
+):
+    """Admin endpoint: View security audit trail of administrative actions."""
+    logs = get_audit_logs(limit=limit)
+    return {"audit_logs": logs, "total": len(logs)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# WARDEN: TASK ASSIGNMENT & REPAIR VERIFICATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/warden/workers")
+async def list_available_workers(
+    department: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(require_roles(["warden", "admin"])),
+):
+    """Warden endpoint: View active maintenance workers and workload."""
+    workers = get_all_workers(department=department)
+    return {"workers": workers, "total": len(workers)}
+
+
+@app.post("/api/warden/assign")
+async def assign_worker_to_complaint(
+    data: WorkerAssign,
+    current_user: Dict[str, Any] = Depends(require_roles(["warden", "admin"])),
+):
+    """Warden endpoint: Assign a complaint to a specific worker."""
+    try:
+        res = assign_complaint_to_worker(
+            complaint_id=data.complaint_id,
+            worker_id=data.worker_id,
+            warden_id=current_user["sub"],
+            instructions=data.instructions,
+        )
+        return {"message": "Job successfully assigned to worker.", "assignment": res}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/warden/verify/{assignment_id}")
+async def verify_or_reopen_repair(
+    assignment_id: str,
+    data: WardenVerify,
+    current_user: Dict[str, Any] = Depends(require_roles(["warden", "admin"])),
+):
+    """Warden endpoint: Inspect and verify completed repair or reopen if incomplete."""
+    try:
+        res = warden_verify_repair(
+            assignment_id=assignment_id,
+            action=data.action,
+            feedback=data.feedback,
+        )
+        return {"message": f"Repair status updated: {res['result']}", "details": res}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.get("/api/warden/critical-alerts")
+async def get_critical_sanitation_alerts(
+    current_user: Dict[str, Any] = Depends(require_roles(["warden", "admin"])),
+):
+    """Warden endpoint: Live feed of P1 Critical hazards and sensitive hygiene emergencies."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, title, description, location, room_number, category, priority,
+                   priority_reason, is_sensitive_hygiene, assigned_worker_name, status, created_at
+            FROM complaints
+            WHERE priority LIKE '%P1%' OR priority LIKE '%Critical%' OR is_sensitive_hygiene = 1
+            ORDER BY created_at DESC LIMIT 50
+            """
+        ).fetchall()
+        alerts = [dict(r) for r in rows]
+        return {"alerts": alerts, "total": len(alerts)}
+    finally:
+        conn.close()
+
+
+@app.get("/api/warden/overdue")
+async def get_overdue_tasks(
+    current_user: Dict[str, Any] = Depends(require_roles(["warden", "admin"])),
+):
+    """Warden endpoint: View overdue complaints and tickets exceeding SLA targets."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT c.id, c.title, c.location, c.priority, c.status, c.created_at,
+                   c.assigned_worker_name, c.assigned_department
+            FROM complaints c
+            WHERE c.status NOT IN ('Resolved', 'Verified')
+            ORDER BY c.created_at ASC
+            """
+        ).fetchall()
+        now = datetime.now(timezone.utc)
+        overdue = []
+        for r in rows:
+            d = dict(r)
+            try:
+                created = datetime.fromisoformat(d["created_at"].replace("Z", "+00:00"))
+                age_hours = (now - created).total_seconds() / 3600
+                p = d.get("priority", "")
+                sla_hours = 2 if "P1" in p or "Critical" in p else (8 if "P2" in p or "High" in p else 24)
+                if age_hours > sla_hours:
+                    d["age_hours"] = round(age_hours, 1)
+                    d["sla_target_hours"] = sla_hours
+                    d["hours_overdue"] = round(age_hours - sla_hours, 1)
+                    overdue.append(d)
+            except Exception:
+                pass
+        return {"overdue_tasks": overdue, "total": len(overdue)}
+    finally:
+        conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# WORKER: REPAIR LIFECYCLE & EVIDENCE SUBMISSION
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/worker/my-tasks")
+async def list_worker_tasks(
+    status: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(require_roles(["worker"])),
+):
+    """
+    Worker endpoint: View jobs assigned to the worker.
+    Strictly protects student identity for sensitive sanitation complaints.
+    """
+    tasks = get_worker_tasks(worker_user_id=current_user["sub"], status_filter=status)
+    return {"tasks": tasks, "total": len(tasks)}
+
+
+@app.post("/api/worker/tasks/{assignment_id}/respond")
+async def worker_respond_to_task(
+    assignment_id: str,
+    data: WorkerTaskResponse,
+    current_user: Dict[str, Any] = Depends(require_roles(["worker"])),
+):
+    """Worker accepts or rejects a delegated maintenance task."""
+    new_status = "Accepted" if data.action == "accept" else "Rejected"
+    try:
+        res = update_worker_task_status(
+            assignment_id=assignment_id,
+            new_status=new_status,
+            rejection_reason=data.rejection_reason,
+        )
+        return {"message": f"Task {new_status}.", "details": res}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/worker/tasks/{assignment_id}/status")
+async def worker_update_status(
+    assignment_id: str,
+    data: WorkerStatusUpdate,
+    current_user: Dict[str, Any] = Depends(require_roles(["worker"])),
+):
+    """Worker updates progress: In Progress, Completed, with optional before/after photos and notes."""
+    try:
+        res = update_worker_task_status(
+            assignment_id=assignment_id,
+            new_status=data.status,
+            worker_notes=data.worker_notes,
+            before_photo=data.before_photo,
+            after_photo=data.after_photo,
+        )
+        return {"message": f"Task status updated to {data.status}.", "details": res}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# STUDENT: COMPLAINTS, REOPENING & SATISFACTION FEEDBACK
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/student/my-complaints")
+async def get_student_complaints(
+    current_user: Dict[str, Any] = Depends(require_roles(["student"])),
+):
+    """Student endpoint: Retrieve only the authenticated student's complaints."""
+    conn = get_db()
+    try:
+        student_id = current_user["sub"]
+        rows = conn.execute(
+            """
+            SELECT * FROM complaints
+            WHERE student_id = ? OR student_name = ?
+            ORDER BY created_at DESC
+            """,
+            (student_id, current_user.get("full_name")),
+        ).fetchall()
+        complaints = [_row_to_dict(r) for r in rows]
+        return {"complaints": complaints, "total": len(complaints)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/complaints/{complaint_id}/reopen")
+async def reopen_complaint(
+    complaint_id: str,
+    data: StudentReopen,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Student or Warden reopens an unresolved complaint."""
+    try:
+        res = student_reopen_complaint(
+            complaint_id=complaint_id,
+            student_id=current_user["sub"],
+            reason=data.reason,
+        )
+        return {"message": "Complaint reopened.", "details": res}
+    except (ValueError, PermissionError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/complaints/{complaint_id}/feedback")
+async def give_complaint_feedback(
+    complaint_id: str,
+    data: StudentFeedback,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Student rates resolution quality (1 to 5 stars) and provides feedback."""
+    try:
+        res = submit_complaint_feedback(
+            complaint_id=complaint_id,
+            student_id=current_user["sub"],
+            rating=data.rating,
+            comment=data.comment or "",
+        )
+        return {"message": "Thank you for your feedback!", "details": res}
+    except (ValueError, PermissionError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NOTIFICATIONS API
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/notifications")
+async def list_notifications(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Fetch notifications for the logged-in user and their role."""
+    notifs = get_user_notifications(user_id=current_user["sub"], role=current_user.get("role", "student"))
+    unread_count = sum(1 for n in notifs if not n.get("is_read"))
+    return {"notifications": notifs, "unread_count": unread_count, "total": len(notifs)}
+
+
+@app.put("/api/notifications/{notification_id}/read")
+async def mark_single_notification_read(
+    notification_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Mark a specific notification as read."""
+    mark_notification_read(notification_id)
+    return {"message": "Notification marked as read."}
+
+
+@app.put("/api/notifications/read-all")
+async def mark_all_user_notifications_read(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Mark all notifications as read for current user."""
+    mark_all_notifications_read(user_id=current_user["sub"], role=current_user.get("role", "student"))
+    return {"message": "All notifications marked as read."}
 
 

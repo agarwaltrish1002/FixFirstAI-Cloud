@@ -1,7 +1,7 @@
 /**
- * FixFirst AI — Main Application
- * ================================
- * SPA router, toast system, modal system, and utility helpers.
+ * FixFirst AI — Main Application & SPA Router
+ * ==============================================
+ * SPA router, toast system, modal system, role guards, and navigation.
  */
 
 import { getHealthCheck, resetDemoData } from './api.js';
@@ -13,7 +13,15 @@ import { loadAIStatus } from './ai-status.js';
 import { loadRiskIntelligence } from './risk-intelligence.js';
 import { loadRankedQueue } from './ranked-queue.js';
 import { renderCategoryArranger } from './category-manager.js';
-import { initAuth, getAuthState, showLoginModal, updateHeaderUI } from './auth.js';
+import { loadWardenPanel } from './warden-assign.js';
+import { loadWorkerTasks, loadWorkerHistory } from './worker-dashboard.js';
+import { loadAdminCandidates, loadAuditLogs } from './admin-dashboard.js';
+import {
+  initAuth,
+  getAuthState,
+  initNotificationBell,
+  startNotificationPolling,
+} from './auth.js';
 
 // ---------------------------------------------------------------------------
 // Toast notification system
@@ -34,6 +42,7 @@ const TOAST_ICONS = {
  */
 export function showToast(message, type = 'info', duration = 4000) {
   const container = document.getElementById('toastContainer');
+  if (!container) return;
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
   toast.innerHTML = `
@@ -74,7 +83,6 @@ export function closeModal() {
 // Utility helpers
 // ---------------------------------------------------------------------------
 
-/** Escape HTML to prevent XSS */
 export function escapeHtml(text) {
   if (!text) return '';
   const div = document.createElement('div');
@@ -82,7 +90,6 @@ export function escapeHtml(text) {
   return div.innerHTML;
 }
 
-/** Format an ISO date string to a readable format */
 export function formatDate(isoStr) {
   if (!isoStr) return '—';
   try {
@@ -96,7 +103,6 @@ export function formatDate(isoStr) {
   }
 }
 
-/** Return a CSS class suffix for a priority level */
 export function priorityClass(priority) {
   const p = (priority || '').toLowerCase();
   if (p.includes('critical') || p.includes('p1')) return 'critical';
@@ -106,24 +112,24 @@ export function priorityClass(priority) {
   return 'medium';
 }
 
-/** Return a CSS class suffix for a status */
 export function statusClass(status) {
   const map = {
     Pending: 'pending',
     Assigned: 'assigned',
+    Accepted: 'in-progress',
     'In Progress': 'in-progress',
+    Completed: 'assigned',
     Resolved: 'resolved',
+    Verified: 'resolved',
     Open: 'assigned',
   };
   return map[status] || 'pending';
 }
 
-/** Return a badge HTML snippet for priority */
 export function priorityBadge(priority) {
   return `<span class="badge badge-${priorityClass(priority)}">${escapeHtml(priority)}</span>`;
 }
 
-/** Return a badge HTML snippet for status */
 export function statusBadge(status) {
   return `<span class="badge badge-${statusClass(status)}">${escapeHtml(status)}</span>`;
 }
@@ -132,21 +138,42 @@ export function statusBadge(status) {
 // SPA Router
 // ---------------------------------------------------------------------------
 
-const ALL_PAGES = ['dashboard', 'risk-intelligence', 'submit', 'complaints', 'tickets', 'ai-status', 'ranked-queue', 'category-arranger'];
-
-// Pages that only teachers/wardens can see
-const STAFF_ONLY_PAGES = ['ranked-queue', 'category-arranger', 'risk-intelligence', 'tickets'];
+const ALL_PAGES = [
+  'dashboard',
+  'submit',
+  'complaints',
+  'warden-assign',
+  'ranked-queue',
+  'risk-intelligence',
+  'category-arranger',
+  'tickets',
+  'ai-status',
+  'worker-tasks',
+  'worker-history',
+  'admin-candidates',
+  'admin-audit',
+];
 
 let currentPage = 'dashboard';
 
-function navigateTo(page) {
+export function navigateTo(page) {
   if (!ALL_PAGES.includes(page)) page = 'dashboard';
 
-  // Role guard for staff-only pages
   const auth = getAuthState();
-  const isStaff = auth.role === 'teacher' || auth.role === 'warden';
-  if (STAFF_ONLY_PAGES.includes(page) && !isStaff) {
-    showToast('That section is only available to Teachers and Wardens.', 'warning');
+  const role = auth.role ? auth.role.toLowerCase() : 'guest';
+  const isWarden = role === 'warden' || role === 'teacher' || role === 'admin';
+  const isAdmin = role === 'admin';
+  const isWorker = role === 'worker';
+
+  // Role access guards
+  if (['warden-assign', 'ranked-queue', 'category-arranger', 'risk-intelligence', 'tickets'].includes(page) && !isWarden) {
+    showToast('That section is only available to Wardens and Administrators.', 'warning');
+    page = 'dashboard';
+  } else if (['admin-candidates', 'admin-audit'].includes(page) && !isAdmin) {
+    showToast('Admin privileges required.', 'warning');
+    page = 'dashboard';
+  } else if (['worker-tasks', 'worker-history'].includes(page) && !isWorker && !isAdmin) {
+    showToast('Field worker privileges required.', 'warning');
     page = 'dashboard';
   }
 
@@ -163,26 +190,35 @@ function navigateTo(page) {
   });
 
   // Close mobile sidebar
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('sidebarOverlay').classList.remove('active');
+  const sb = document.getElementById('sidebar');
+  const sbo = document.getElementById('sidebarOverlay');
+  if (sb) sb.classList.remove('open');
+  if (sbo) sbo.classList.remove('active');
 
   // Load page content
   switch (page) {
-    case 'dashboard':          loadDashboard(); break;
-    case 'risk-intelligence':  loadRiskIntelligence(); break;
-    case 'submit':             loadSubmitForm(); break;
-    case 'complaints':         loadComplaints(); break;
-    case 'tickets':            loadTickets(); break;
-    case 'ai-status':          loadAIStatus(); break;
-    case 'ranked-queue':       loadRankedQueue(); break;
-    case 'category-arranger':  renderCategoryArranger(); break;
+    case 'dashboard':         loadDashboard(); break;
+    case 'submit':            loadSubmitForm(); break;
+    case 'complaints':        loadComplaints(); break;
+    case 'warden-assign':     loadWardenPanel(); break;
+    case 'ranked-queue':      loadRankedQueue(); break;
+    case 'risk-intelligence': loadRiskIntelligence(); break;
+    case 'category-arranger': renderCategoryArranger(); break;
+    case 'tickets':           loadTickets(); break;
+    case 'ai-status':         loadAIStatus(); break;
+    case 'worker-tasks':      loadWorkerTasks(); break;
+    case 'worker-history':    loadWorkerHistory(); break;
+    case 'admin-candidates':  loadAdminCandidates(); break;
+    case 'admin-audit':       loadAuditLogs(); break;
   }
 }
 
-// Make navigateTo available globally for inline onclick handlers
+// Make globally accessible
 window.navigateTo = navigateTo;
 window.showComplaintDetail = showComplaintDetail;
 window.showToast = showToast;
+window.openModal = openModal;
+window.closeModal = closeModal;
 
 // ---------------------------------------------------------------------------
 // Role-based sidebar visibility
@@ -190,14 +226,17 @@ window.showToast = showToast;
 
 function updateSidebarForRole() {
   const auth = getAuthState();
-  const isStaff = auth.role === 'teacher' || auth.role === 'warden';
+  const rawRole = auth.role ? auth.role.toLowerCase() : 'student';
+  const role = rawRole === 'teacher' ? 'warden' : rawRole;
 
-  document.querySelectorAll('.nav-item[data-role]').forEach(item => {
-    const requiredRole = item.getAttribute('data-role');
-    if (requiredRole === 'staff') {
-      item.style.display = isStaff ? '' : 'none';
-    } else if (requiredRole === 'student') {
-      item.style.display = isStaff ? 'none' : '';
+  document.querySelectorAll('.nav-item[data-roles]').forEach(item => {
+    const allowed = item.getAttribute('data-roles').split(',').map(r => r.trim());
+    if (allowed.includes(role) || (role === 'admin' && !allowed.includes('worker'))) {
+      item.style.display = '';
+    } else if (allowed.includes(role)) {
+      item.style.display = '';
+    } else {
+      item.style.display = 'none';
     }
   });
 }
@@ -209,8 +248,9 @@ function updateSidebarForRole() {
 async function checkConnection() {
   const dot = document.getElementById('connectionDot');
   const label = document.getElementById('connectionLabel');
-  const health = await getHealthCheck();
+  if (!dot || !label) return;
 
+  const health = await getHealthCheck();
   if (health) {
     dot.className = 'connection-dot connected';
     label.textContent = health.ai_ready ? 'AI Connected' : 'Backend OK';
@@ -226,14 +266,10 @@ async function checkConnection() {
 
 function onAuthChange(authState) {
   updateSidebarForRole();
-
-  // If current page is staff-only and user is now a student, redirect
-  const isStaff = authState.role === 'teacher' || authState.role === 'warden';
-  if (!isStaff && STAFF_ONLY_PAGES.includes(currentPage)) {
+  if (authState.isAuthenticated) {
+    startNotificationPolling();
+    // Redirect to role default if current page is unauthorized
     navigateTo('dashboard');
-  } else {
-    // Reload current page with new role context
-    navigateTo(currentPage);
   }
 }
 
@@ -242,7 +278,7 @@ function onAuthChange(authState) {
 // ---------------------------------------------------------------------------
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Sidebar navigation
+  // Sidebar navigation click
   document.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', (e) => {
       e.preventDefault();
@@ -250,46 +286,53 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Hamburger menu
+  // Mobile hamburger
   const hamburger = document.getElementById('hamburgerBtn');
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebarOverlay');
 
-  hamburger.addEventListener('click', () => {
-    sidebar.classList.toggle('open');
-    overlay.classList.toggle('active');
-  });
+  if (hamburger && sidebar && overlay) {
+    hamburger.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('active');
+    });
 
-  overlay.addEventListener('click', () => {
-    sidebar.classList.remove('open');
-    overlay.classList.remove('active');
-  });
+    overlay.addEventListener('click', () => {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('active');
+    });
+  }
 
-  // Modal close
-  document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
-  document.getElementById('modalOverlay').addEventListener('click', (e) => {
-    if (e.target === document.getElementById('modalOverlay')) closeModal();
-  });
+  // Modal close handlers
+  const closeBtn = document.getElementById('modalCloseBtn');
+  const modalOverlay = document.getElementById('modalOverlay');
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (modalOverlay) {
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+  }
 
   // Reset demo data button
-  document.getElementById('resetDemoBtn').addEventListener('click', async () => {
-    if (!confirm('Reset all demo complaints? Your submitted complaints will remain.')) return;
-    try {
-      await resetDemoData();
-      showToast('Demo data reset successfully!', 'success');
-      if (currentPage === 'dashboard') loadDashboard();
-      if (currentPage === 'complaints') loadComplaints();
-    } catch (e) {
-      showToast('Failed to reset demo data: ' + e.message, 'error');
-    }
-  });
+  const resetBtn = document.getElementById('resetDemoBtn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async () => {
+      if (!confirm('Reset all demo complaints and worker tasks? Custom user data will be preserved.')) return;
+      try {
+        await resetDemoData();
+        showToast('Demo data reset successfully!', 'success');
+        navigateTo(currentPage);
+      } catch (e) {
+        showToast('Failed to reset demo data: ' + e.message, 'error');
+      }
+    });
+  }
 
-  // Initialise auth system — this will auto-login student1 for demo
+  // Initialise Notification Bell
+  initNotificationBell();
+
+  // Initialise Auth
   initAuth(onAuthChange);
-
-  // Hash-based routing (auth change will also call navigateTo)
-  const hash = window.location.hash.replace('#', '') || 'dashboard';
-  navigateTo(hash);
 
   // Connection check
   checkConnection();
