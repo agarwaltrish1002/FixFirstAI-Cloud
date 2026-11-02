@@ -49,11 +49,13 @@ export function setAuthState(token, user) {
 }
 
 export function clearAuthState() {
+  stopNotificationPolling();
   currentToken = null;
   currentUser = null;
   localStorage.removeItem('fixfirst_token');
   localStorage.removeItem('fixfirst_user');
   updateHeaderUI();
+  showPortal();
   if (typeof onAuthChangeCallback === 'function') onAuthChangeCallback(getAuthState());
 }
 
@@ -79,11 +81,9 @@ export function initAuth(onChange) {
     const target = e.target;
     if (target && (target.closest('#logoutBtn') || target.closest('#logoutSidebarBtn'))) {
       clearAuthState();
-      showPortal();
     }
     if (target && target.closest('#roleSwitchBtn')) {
       clearAuthState();
-      showPortal();
     }
   });
 }
@@ -138,14 +138,16 @@ export async function openLoginModal(roleHint = null) {
 
   const demoCardsHtml = demoAccounts.length > 0 ? `
     <div class="login-demo-section">
-      <p class="login-demo-label">Quick demo access:</p>
+      <p class="login-demo-label">Quick 1-Click Demo Login:</p>
       <div class="demo-accounts-grid">
         ${demoAccounts.map(acc => `
           <div class="demo-account-card" data-user="${acc.username}" data-pass="${acc.password}">
-            <div class="demo-account-name">${acc.full_name}</div>
-            <div class="demo-account-info">${acc.label}</div>
-            <button class="btn btn-sm btn-outline-primary demo-quick-login">
-              Quick Login →
+            <div>
+              <div class="demo-account-name">${acc.full_name}</div>
+              <div class="demo-account-info">${acc.label}</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary demo-quick-login">
+              Login →
             </button>
           </div>
         `).join('')}
@@ -158,7 +160,7 @@ export async function openLoginModal(roleHint = null) {
     <div class="login-modal-content">
       ${cfg ? `<div class="login-role-banner role-banner-${roleHint}">
         <span class="login-role-icon">${cfg.icon}</span>
-        <span>${cfg.label} Portal</span>
+        <span>${cfg.label} Portal Authentication</span>
       </div>` : ''}
 
       ${demoCardsHtml}
@@ -215,6 +217,17 @@ export async function openLoginModal(roleHint = null) {
 
 // Make globally accessible for inline onclick in HTML
 window.openLoginModal = openLoginModal;
+
+window.quickDemoLogin = async (username, password, roleHint) => {
+  await executeLogin(username, password, roleHint);
+};
+
+window.continueAsGuest = () => {
+  hidePortal();
+  showAppShell();
+  updateHeaderUI();
+  window.navigateTo?.('dashboard');
+};
 
 async function executeLogin(username, password, roleHint) {
   const errBox = document.getElementById('loginError');
@@ -281,11 +294,15 @@ export function updateHeaderUI() {
     if (resetBtn && (state.role === 'admin' || state.role === 'warden')) resetBtn.style.display = '';
   } else {
     if (container) {
-      container.innerHTML = `<button class="btn btn-sm btn-primary" onclick="window.openLoginModal()">🔑 Sign In</button>`;
+      container.innerHTML = `<button class="btn btn-sm btn-primary" onclick="window.showPortal ? window.showPortal() : window.openLoginModal()">🔑 Sign In</button>`;
     }
     if (notifBell) notifBell.style.display = 'none';
+    if (sidebarLabel) sidebarLabel.textContent = `Campus Maintenance`;
+    if (headerSubtitle) headerSubtitle.textContent = `Public Campus Dashboard`;
   }
 }
+
+window.showPortal = showPortal;
 
 // ---------------------------------------------------------------------------
 // Notifications

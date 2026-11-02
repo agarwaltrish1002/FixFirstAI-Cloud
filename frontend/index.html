@@ -20,34 +20,78 @@
         <div class="portal-logo">🛠️</div>
         <h1 class="portal-title">FixFirst AI</h1>
         <p class="portal-subtitle">Intelligent Campus Safety & Maintenance Management</p>
-        <p class="portal-desc">Select your role to access your personalised dashboard</p>
+        <p class="portal-desc">Choose your campus role to enter your dedicated command dashboard</p>
       </div>
 
-      <!-- 4 Role Cards -->
+      <!-- 4 Role Cards with 1-Click Demo & Custom Login -->
       <div class="portal-roles" id="portalRoles">
-        <button class="portal-role-card student" data-role="student" onclick="window.openLoginModal('student')">
+
+        <!-- Student Card -->
+        <div class="portal-role-card student" data-role="student">
           <span class="role-card-icon">🎓</span>
-          <span class="role-card-title">Student</span>
-          <span class="role-card-desc">Submit complaints, track repairs, give feedback</span>
-          <span class="role-card-arrow">→</span>
-        </button>
-        <button class="portal-role-card warden" data-role="warden" onclick="window.openLoginModal('warden')">
+          <span class="role-card-title">Student Portal</span>
+          <span class="role-card-desc">Submit complaints, track repairs, reopen unresolved issues, and rate quality.</span>
+          <div class="role-card-actions">
+            <button class="btn-portal-login student" onclick="window.openLoginModal('student')">
+              🔑 Student Login →
+            </button>
+            <button class="btn-portal-demo" onclick="window.quickDemoLogin('student1', 'Student@123', 'student')">
+              ⚡ 1-Click Demo: Aarav (Student)
+            </button>
+          </div>
+        </div>
+
+        <!-- Warden Card -->
+        <div class="portal-role-card warden" data-role="warden">
           <span class="role-card-icon">🛡️</span>
-          <span class="role-card-title">Warden</span>
-          <span class="role-card-desc">Oversee campus, assign workers, verify repairs</span>
-          <span class="role-card-arrow">→</span>
-        </button>
-        <button class="portal-role-card worker" data-role="worker" onclick="window.openLoginModal('worker')">
+          <span class="role-card-title">Warden Command</span>
+          <span class="role-card-desc">Oversee campus hazards, assign workers, view P1 biohazard alerts & verify repairs.</span>
+          <div class="role-card-actions">
+            <button class="btn-portal-login warden" onclick="window.openLoginModal('warden')">
+              🔑 Warden Login →
+            </button>
+            <button class="btn-portal-demo" onclick="window.quickDemoLogin('warden1', 'Warden@123', 'warden')">
+              ⚡ 1-Click Demo: Prof. Rajesh (Warden)
+            </button>
+          </div>
+        </div>
+
+        <!-- Worker Card -->
+        <div class="portal-role-card worker" data-role="worker">
           <span class="role-card-icon">🔧</span>
-          <span class="role-card-title">Worker</span>
-          <span class="role-card-desc">View assigned tasks, update repair progress</span>
-          <span class="role-card-arrow">→</span>
-        </button>
-        <button class="portal-role-card admin" data-role="admin" onclick="window.openLoginModal('admin')">
+          <span class="role-card-title">Field Worker</span>
+          <span class="role-card-desc">View assigned jobs, accept/reject tasks, upload before/after photos & submit completion.</span>
+          <div class="role-card-actions">
+            <button class="btn-portal-login worker" onclick="window.openLoginModal('worker')">
+              🔑 Worker Login →
+            </button>
+            <button class="btn-portal-demo" onclick="window.quickDemoLogin('worker1', 'Worker@123', 'worker')">
+              ⚡ 1-Click Demo: Ramesh (Sanitation)
+            </button>
+          </div>
+        </div>
+
+        <!-- Admin Card -->
+        <div class="portal-role-card admin" data-role="admin">
           <span class="role-card-icon">⚙️</span>
-          <span class="role-card-title">Admin</span>
-          <span class="role-card-desc">Manage candidates, roles, accounts, audit logs</span>
-          <span class="role-card-arrow">→</span>
+          <span class="role-card-title">Admin Console</span>
+          <span class="role-card-desc">Manage personnel, assign departments, reset passwords, and audit account changes.</span>
+          <div class="role-card-actions">
+            <button class="btn-portal-login admin" onclick="window.openLoginModal('admin')">
+              🔑 Admin Login →
+            </button>
+            <button class="btn-portal-demo" onclick="window.quickDemoLogin('admin1', 'Admin@123', 'admin')">
+              ⚡ 1-Click Demo: Dr. Ananya (Admin)
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Guest Explore Option -->
+      <div class="portal-guest-bar">
+        <button class="btn btn-outline-light btn-sm" onclick="window.continueAsGuest()">
+          👁️ Continue as Guest / View Public Dashboard
         </button>
       </div>
     </div>
@@ -220,7 +264,7 @@
        GLOBAL MODAL (login + detail popups)
        ═══════════════════════════════════════════════════════════════════════ -->
   <div class="modal-overlay" id="modalOverlay">
-    <div class="modal-container" id="modalContainer">
+    <div class="modal modal-container" id="modalContainer">
       <div class="modal-header">
         <h3 class="modal-title" id="modalTitle">Modal Title</h3>
         <button class="modal-close" id="modalCloseBtn" aria-label="Close">✕</button>

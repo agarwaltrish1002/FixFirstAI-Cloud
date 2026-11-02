@@ -825,7 +825,7 @@ tbody tr:nth-child(even):hover {
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 200;
+  z-index: 100000;
   align-items: center;
   justify-content: center;
   padding: 24px;
@@ -835,7 +835,8 @@ tbody tr:nth-child(even):hover {
   display: flex;
 }
 
-.modal {
+.modal,
+.modal-container {
   background: var(--white);
   border-radius: var(--radius-lg);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
@@ -1279,7 +1280,8 @@ tbody tr:nth-child(even):hover {
     padding: 0;
   }
 
-  .modal {
+  .modal,
+.modal-container {
     box-shadow: none;
     max-height: none;
     max-width: 100%;
@@ -1399,7 +1401,8 @@ tbody tr:nth-child(even):hover {
     max-width: none;
   }
 
-  .modal {
+  .modal,
+.modal-container {
     max-height: 95vh;
   }
 }
@@ -2395,3 +2398,63 @@ tbody tr:nth-child(even):hover {
   align-items: center;
   padding: 40px;
 }
+
+
+/* ── Additional Portal & Action Styles ───────────────────────────────────── */
+.role-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 14px;
+}
+
+.portal-guest-bar {
+  margin-top: 32px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+}
+
+.btn-portal-demo {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.btn-portal-demo:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn-portal-login {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.btn-portal-login.student { background: #2563eb; color: #fff; }
+.btn-portal-login.student:hover { background: #1d4ed8; }
+
+.btn-portal-login.warden { background: #16a34a; color: #fff; }
+.btn-portal-login.warden:hover { background: #15803d; }
+
+.btn-portal-login.worker { background: #d97706; color: #fff; }
+.btn-portal-login.worker:hover { background: #b45309; }
+
+.btn-portal-login.admin { background: #9333ea; color: #fff; }
+.btn-portal-login.admin:hover { background: #7c3aed; }
